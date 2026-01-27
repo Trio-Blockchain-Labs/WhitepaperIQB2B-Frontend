@@ -1,0 +1,118 @@
+.input-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.input-container--full-width {
+  width: 100%;
+}
+
+.input-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-field {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  background-color: var(--color-white);
+  border: 1.5px solid var(--color-gray-300);
+  border-radius: var(--radius-lg);
+  transition: all var(--transition-fast);
+  min-height: 48px;
+}
+
+.input-field::placeholder {
+  color: var(--color-text-muted);
+}
+
+.input-field:hover:not(:disabled) {
+  border-color: var(--color-gray-400);
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(139, 46, 139, 0.15);
+}
+
+.input-field:disabled {
+  background-color: var(--color-gray-100);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* With Icons */
+.input-wrapper--has-left-icon .input-field {
+  padding-left: 44px;
+}
+
+.input-wrapper--has-right-icon .input-field {
+  padding-right: 44px;
+}
+
+.input-icon {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.input-icon--left {
+  left: var(--spacing-md);
+}
+
+.input-icon--right {
+  right: var(--spacing-md);
+}
+
+/* Password Toggle */
+.input-password-toggle {
+  position: absolute;
+  right: var(--spacing-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: var(--spacing-xs);
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast);
+}
+
+.input-password-toggle:hover {
+  color: var(--color-primary);
+}
+
+/* Error State */
+.input-container--error .input-field {
+  border-color: var(--color-error);
+}
+
+.input-container--error .input-field:focus {
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+
+.input-error {
+  font-size: var(--font-size-sm);
+  color: var(--color-error);
+}
+
+.input-helper {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}

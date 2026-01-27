@@ -1,0 +1,45 @@
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.logo__whitepaper {
+  height: auto;
+  width: auto;
+  display: block;
+}
+
+.logo__icon {
+  height: 32px;
+  width: auto;
+  display: block;
+}
+
+/* Size variants */
+.logo--sm .logo__whitepaper {
+  height: 16px;
+  width: auto;
+}
+
+.logo--sm .logo__icon {
+  height: 20px;
+}
+
+.logo--md .logo__whitepaper {
+  height: 24px;
+  width: auto;
+}
+
+.logo--md .logo__icon {
+  height: 32px;
+}
+
+.logo--lg .logo__whitepaper {
+  height: 56px;
+  width: auto;
+}
+
+.logo--lg .logo__icon {
+  height: 72px;
+}
