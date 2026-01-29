@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AuthLayout } from '../../layouts';
 import { Button, Input } from '../../components/common';
 import { Logo } from '../../components/Logo';
-import { mockCredentials, getMockAuthResponse } from '../../mock';
+import { authService } from '../../services';
 import type { LoginCredentials } from '../../types';
 import './Login.css';
 
@@ -26,8 +26,8 @@ export const Login: React.FC = () => {
   const [formData, setFormData] = useState<LoginCredentials>({
     email: '',
     password: '',
-    rememberMe: false,
   });
+  const [rememberMe, setRememberMe] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -43,9 +43,11 @@ export const Login: React.FC = () => {
 
     if (!formData.password) {
       newErrors.password = 'Password is required';
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
     }
+    // TODO: Re-enable password length validation later
+    // else if (formData.password.length < 6) {
+    //   newErrors.password = 'Password must be at least 6 characters';
+    // }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -53,6 +55,12 @@ export const Login: React.FC = () => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
+    
+    if (name === 'rememberMe') {
+      setRememberMe(checked);
+      return;
+    }
+    
     setFormData((prev) => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
@@ -71,27 +79,27 @@ export const Login: React.FC = () => {
     setIsLoading(true);
     setLoginError(null);
 
-    // Simulate API call delay
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    // Check mock credentials
-    const validPassword = mockCredentials[formData.email];
-    
-    if (validPassword && validPassword === formData.password) {
-      const authResponse = getMockAuthResponse(formData.email);
-      if (authResponse) {
-        console.log('Login successful:', authResponse);
-        // Store token (mock)
-        localStorage.setItem('token', authResponse.token);
-        localStorage.setItem('user', JSON.stringify(authResponse.user));
-        // Redirect to search page
-        navigate('/search');
-      }
-    } else {
-      setLoginError('Invalid email or password');
+    try {
+      // Call real API
+      const response = await authService.login({
+        email: formData.email,
+        password: formData.password,
+      });
+      
+      console.log('Login successful:', response.user);
+      
+      // Dispatch event to notify OrganizationContext to fetch data
+      window.dispatchEvent(new Event('user-logged-in'));
+      
+      // Redirect to search page
+      navigate('/search');
+    } catch (error) {
+      // Handle error message
+      const message = error instanceof Error ? error.message : 'Invalid email or password';
+      setLoginError(message);
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   return (
@@ -150,7 +158,7 @@ export const Login: React.FC = () => {
                 <input
                   type="checkbox"
                   name="rememberMe"
-                  checked={formData.rememberMe}
+                  checked={rememberMe}
                   onChange={handleInputChange}
                   className="login__checkbox"
                 />

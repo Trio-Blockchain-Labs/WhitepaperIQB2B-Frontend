@@ -1,46 +1,132 @@
-// Organization Types
+// Organization Types - Based on API Documentation
 
-export type MemberRole = 'owner' | 'admin' | 'analyst' | 'viewer';
+import type { UserRole, User } from './auth.types';
 
-export type MemberStatus = 'active' | 'inactive' | 'pending';
+/**
+ * Organization subscription plans
+ */
+export type Plan = 'FREE' | 'STARTER' | 'PRO' | 'ENTERPRISE';
 
-export interface OrganizationMember {
-  id: string;
-  name: string;
-  email: string;
-  role: MemberRole;
-  status: MemberStatus;
-  isVerified: boolean;
-  joinedAt: string;
-  avatar?: string;
+/**
+ * Organization status
+ */
+export type OrgStatus = 'PENDING_SETUP' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
+
+/**
+ * Organization credits information
+ */
+export interface OrganizationCredits {
+  total: number;
+  used: number;
+  remaining: number;
 }
 
-export type SubscriptionPlan = 'starter' | 'professional' | 'enterprise';
+/**
+ * Organization billing information
+ */
+export interface OrganizationBilling {
+  cycleStart: string;
+}
 
+/**
+ * Organization object from API
+ */
 export interface Organization {
   id: string;
   name: string;
-  subscriptionPlan: SubscriptionPlan;
-  billingStartDate: string;
-  usageStats: {
-    used: number;
-    total: number;
-  };
+  slug: string;
+  plan: Plan;
+  status: OrgStatus;
+  credits: OrganizationCredits;
+  billing: OrganizationBilling;
   createdAt: string;
-  members: OrganizationMember[];
 }
 
-export interface AddMemberPayload {
+/**
+ * Organization member (same as User from auth)
+ */
+export type OrganizationMember = User;
+
+/**
+ * Pending invitation
+ */
+export interface PendingInvitation {
+  id: string;
   email: string;
-  role: MemberRole;
+  role: UserRole;
+  expiresAt: string;
+  createdAt: string;
 }
 
-export interface UpdateMemberPayload {
-  memberId: string;
-  role?: MemberRole;
-  status?: MemberStatus;
+/**
+ * Created invitation (includes token)
+ */
+export interface CreatedInvitation extends PendingInvitation {
+  token: string;
 }
 
+/**
+ * Organization members response
+ */
+export interface OrganizationMembersResponse {
+  users: OrganizationMember[];
+  pendingInvitations: PendingInvitation[];
+}
+
+/**
+ * Update organization payload
+ */
 export interface UpdateOrganizationPayload {
   name?: string;
 }
+
+/**
+ * Invite member payload
+ */
+export interface InviteMemberPayload {
+  email: string;
+  role: UserRole;
+}
+
+/**
+ * Update member payload
+ */
+export interface UpdateMemberPayload {
+  role?: UserRole;
+  isActive?: boolean;
+}
+
+// Re-export UserRole for convenience
+export type { UserRole } from './auth.types';
+
+// UI Helpers - Role colors for display
+export const roleColors: Record<UserRole, { bg: string; text: string; border: string }> = {
+  OWNER: { bg: 'rgba(34, 197, 94, 0.15)', text: '#16a34a', border: '#22c55e' },
+  ADMIN: { bg: 'rgba(239, 68, 68, 0.15)', text: '#dc2626', border: '#ef4444' },
+  ANALYST: { bg: 'rgba(245, 158, 11, 0.15)', text: '#d97706', border: '#f59e0b' },
+  VIEWER: { bg: 'rgba(168, 85, 247, 0.15)', text: '#9333ea', border: '#a855f7' },
+};
+
+// UI Helpers - Role labels for display
+export const roleLabels: Record<UserRole, string> = {
+  OWNER: 'Owner',
+  ADMIN: 'Admin',
+  ANALYST: 'Analyst',
+  VIEWER: 'Viewer',
+};
+
+// UI Helpers - Status colors
+export const statusColors: Record<OrgStatus, { bg: string; text: string }> = {
+  PENDING_SETUP: { bg: 'rgba(245, 158, 11, 0.15)', text: '#d97706' },
+  ACTIVE: { bg: 'rgba(34, 197, 94, 0.15)', text: '#16a34a' },
+  SUSPENDED: { bg: 'rgba(239, 68, 68, 0.15)', text: '#dc2626' },
+  ARCHIVED: { bg: 'rgba(107, 114, 128, 0.15)', text: '#6b7280' },
+};
+
+// UI Helpers - Plan labels
+export const planLabels: Record<Plan, string> = {
+  FREE: 'Free',
+  STARTER: 'Starter',
+  PRO: 'Professional',
+  ENTERPRISE: 'Enterprise',
+};

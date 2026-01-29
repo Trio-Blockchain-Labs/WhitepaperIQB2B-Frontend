@@ -1,4 +1,4 @@
-import type { Coin, UsageStats, Business } from '../types/crypto';
+import type { Coin } from '../types/crypto';
 
 export const mockCoins: Coin[] = [
   { id: '1', name: 'Bitcoin', ticker: 'BTC', category: 'Layer 1' },
@@ -53,17 +53,6 @@ export const recentAnalyses = [
   { id: '2', coinName: 'Solana', ticker: 'SOL', date: '5 hours ago', score: 72 },
   { id: '3', coinName: 'Arbitrum', ticker: 'ARB', date: '1 day ago', score: 91 },
 ];
-
-export const mockUsageStats: UsageStats = {
-  used: 60,
-  total: 100,
-  planName: 'Pro Plan',
-};
-
-export const mockBusiness: Business = {
-  id: '1',
-  name: 'Acme Corporation',
-};
 
 export const searchCoins = (query: string): Coin[] => {
   if (!query.trim()) return [];

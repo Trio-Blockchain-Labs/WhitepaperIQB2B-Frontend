@@ -1,41 +1,11 @@
-// User Types
-export interface User {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  role: UserRole;
-  avatar?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+// Re-export auth types
+export * from './auth.types';
 
-export type UserRole = 'admin' | 'user' | 'analyst';
-
-// Auth Types
-export interface LoginCredentials {
-  email: string;
-  password: string;
-  rememberMe?: boolean;
-}
-
-export interface AuthResponse {
-  user: User;
-  token: string;
-  refreshToken: string;
-}
-
-// API Response Types
-export interface ApiResponse<T> {
-  data: T;
-  success: boolean;
-  message?: string;
-}
-
+// API Error Types (extended)
 export interface ApiError {
   message: string;
-  code: string;
-  status: number;
+  error?: string;
+  statusCode?: number;
 }
 
 // Form Types
@@ -58,3 +28,9 @@ export * from './token';
 
 // Re-export organization types
 export * from './organization';
+
+// Re-export project types
+export * from './project';
+
+// Re-export invite types
+export * from './invite';

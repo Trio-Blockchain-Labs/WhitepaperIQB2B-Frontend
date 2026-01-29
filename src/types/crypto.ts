@@ -5,15 +5,3 @@ export interface Coin {
   logo?: string;
   category?: string;
 }
-
-export interface UsageStats {
-  used: number;
-  total: number;
-  planName: string;
-}
-
-export interface Business {
-  id: string;
-  name: string;
-  logo?: string;
-}

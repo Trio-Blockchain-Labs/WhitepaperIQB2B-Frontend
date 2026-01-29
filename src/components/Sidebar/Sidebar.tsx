@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Logo } from '../Logo';
-import { mockUsageStats, mockBusiness } from '../../mock';
+import { useOrganization } from '../../context';
+import { authService } from '../../services';
 import './Sidebar.css';
 
 interface SidebarProps {
@@ -29,8 +30,34 @@ const SettingsIcon = () => (
   </svg>
 );
 
+const LogoutIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <polyline points="16 17 21 12 16 7" />
+    <line x1="21" y1="12" x2="9" y2="12" />
+  </svg>
+);
+
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
-  const usagePercentage = (mockUsageStats.used / mockUsageStats.total) * 100;
+  const { organization } = useOrganization();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  // Show remaining percentage (inverse of used)
+  const remainingPercentage = organization?.credits 
+    ? (organization.credits.remaining / organization.credits.total) * 100 
+    : 0;
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await authService.logout();
+      // logout() already handles redirect, but we can close sidebar
+      onClose();
+    } catch (error) {
+      console.error('Logout failed:', error);
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
     <>
@@ -42,7 +69,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       <aside className={`sidebar ${isOpen ? 'sidebar--open' : ''}`}>
         <div className="sidebar__header">
           <Logo className="sidebar__logo" size="md" />
-          <p className="sidebar__business-name">{mockBusiness.name}</p>
+          <p className="sidebar__business-name">
+            {organization?.name || 'Loading...'}
+          </p>
         </div>
 
         <nav className="sidebar__nav">
@@ -78,16 +107,28 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             <div className="sidebar__usage-bar">
               <div 
                 className="sidebar__usage-bar-fill" 
-                style={{ width: `${usagePercentage}%` }}
+                style={{ width: `${remainingPercentage}%` }}
               />
             </div>
             <div className="sidebar__usage-info">
               <span className="sidebar__usage-count">
-                {mockUsageStats.used}/{mockUsageStats.total}
+                {organization?.credits 
+                  ? `${organization.credits.remaining} remaining`
+                  : '0 remaining'
+                }
               </span>
-              <a href="/plan" className="sidebar__usage-link">view my plan</a>
+              <a href="/settings" className="sidebar__usage-link">view my plan</a>
             </div>
           </div>
+          
+          <button 
+            className="sidebar__logout"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+          >
+            <LogoutIcon />
+            <span>{isLoggingOut ? 'Logging out...' : 'Logout'}</span>
+          </button>
         </div>
       </aside>
     </>

@@ -148,3 +148,36 @@
   color: var(--color-accent);
   text-decoration: underline;
 }
+
+/* Logout Button */
+.sidebar__logout {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  width: 100%;
+  padding: var(--spacing-md) var(--spacing-lg);
+  margin-top: var(--spacing-lg);
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-white);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.sidebar__logout:hover:not(:disabled) {
+  background-color: var(--color-bg-secondary);
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.sidebar__logout:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sidebar__logout svg {
+  flex-shrink: 0;
+}

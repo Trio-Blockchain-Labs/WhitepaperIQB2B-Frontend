@@ -1,16 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { MainLayout } from '../../layouts';
 import { Button } from '../../components/common';
-import { 
-  getOrganization, 
-  updateOrganization, 
-  addMember, 
-  updateMember, 
-  deleteMember,
-  roleColors,
-  roleLabels 
-} from '../../mock';
-import type { Organization, OrganizationMember, MemberRole } from '../../types';
+import { organizationService, userService } from '../../services';
+import { useOrganization } from '../../context';
+import { roleColors, roleLabels, planLabels } from '../../types/organization';
+import type { 
+  Organization, 
+  OrganizationMember, 
+  PendingInvitation,
+  UserRole 
+} from '../../types';
 import './Settings.css';
 
 // Icons
@@ -25,14 +24,6 @@ const EditIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-  </svg>
-);
-
-const VerifiedIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="#3B82F6" stroke="none">
-    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-    <circle cx="12" cy="12" r="10" fill="#3B82F6" />
-    <path d="M9 12l2 2 4-4" stroke="white" strokeWidth="2" fill="none" />
   </svg>
 );
 
@@ -65,6 +56,26 @@ const PlusIcon = () => (
   </svg>
 );
 
+const CopyIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+);
+
+const ClockIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="12 6 12 12 16 14" />
+  </svg>
+);
+
 // Helpers
 const formatDate = (dateStr: string): string => {
   const date = new Date(dateStr);
@@ -76,23 +87,36 @@ const formatTime = (dateStr: string): string => {
   return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase();
 };
 
-const formatPlan = (plan: string): string => {
-  return plan.charAt(0).toUpperCase() + plan.slice(1);
-};
-
 // Member Modal Component
 interface MemberModalProps {
   member: OrganizationMember;
   onClose: () => void;
-  onSave: (memberId: string, role: MemberRole) => void;
-  onDelete: (memberId: string) => void;
+  onSave: (memberId: string, role: UserRole) => void;
+  onDelete: (memberId: string) => Promise<void>;
+  onUpdateName?: (memberId: string, fullName: string) => Promise<void>;
+  currentUserRole: UserRole;
+  currentUserId?: string;
 }
 
-const MemberModal: React.FC<MemberModalProps> = ({ member, onClose, onSave, onDelete }) => {
-  const [selectedRole, setSelectedRole] = useState<MemberRole>(member.role);
+const MemberModal: React.FC<MemberModalProps> = ({ 
+  member, 
+  onClose, 
+  onSave, 
+  onDelete, 
+  onUpdateName,
+  currentUserRole,
+  currentUserId 
+}) => {
+  const [selectedRole, setSelectedRole] = useState<UserRole>(member.role);
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState(member.fullName || '');
+  const [isSavingName, setIsSavingName] = useState(false);
+  
+  const isCurrentUser = member.id === currentUserId;
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -100,35 +124,118 @@ const MemberModal: React.FC<MemberModalProps> = ({ member, onClose, onSave, onDe
     setIsSaving(false);
   };
 
-  const handleDelete = () => {
-    onDelete(member.id);
-    setShowDeleteConfirm(false);
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await onDelete(member.id);
+      setShowDeleteConfirm(false);
+    } catch (err) {
+      console.error('Delete failed:', err);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
-  const roles: MemberRole[] = ['owner', 'admin', 'analyst', 'viewer'];
+  const handleUpdateName = async () => {
+    if (!editedName.trim() || !onUpdateName || isSavingName) return;
+    
+    setIsSavingName(true);
+    try {
+      await onUpdateName(member.id, editedName.trim());
+      setIsEditingName(false);
+    } catch (err) {
+      console.error('Failed to update name:', err);
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  // Can't modify OWNER or self
+  const canModify = member.role !== 'OWNER' && (currentUserRole === 'OWNER' || currentUserRole === 'ADMIN');
+  const roles: UserRole[] = ['ADMIN', 'ANALYST', 'VIEWER'];
 
   return (
     <div className="settings-modal-overlay" onClick={onClose}>
       <div className="settings-modal" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="settings-modal__header">
-          <h3 className="settings-modal__name">{member.name}</h3>
-          <button 
-            className="settings-modal__delete-btn"
-            onClick={() => setShowDeleteConfirm(true)}
-            title="Delete User"
-          >
-            <DeleteUserIcon />
-          </button>
+          {isEditingName ? (
+            <div className="settings-modal__name-edit-wrapper">
+              <input
+                type="text"
+                value={editedName}
+                onChange={(e) => setEditedName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleUpdateName();
+                  } else if (e.key === 'Escape') {
+                    setIsEditingName(false);
+                    setEditedName(member.fullName || '');
+                  }
+                }}
+                autoFocus
+                className="settings-modal__name-input"
+                disabled={isSavingName}
+              />
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleUpdateName}
+                isLoading={isSavingName}
+                disabled={isSavingName || !editedName.trim()}
+                className="settings-modal__name-save"
+              >
+                Save
+              </Button>
+              <button
+                className="settings-modal__name-cancel"
+                onClick={() => {
+                  setIsEditingName(false);
+                  setEditedName(member.fullName || '');
+                }}
+                disabled={isSavingName}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+          ) : (
+            <div className="settings-modal__name-wrapper">
+              <h3 className="settings-modal__name">{member.fullName || member.email}</h3>
+              {isCurrentUser && onUpdateName && (
+                <button
+                  className="settings-modal__name-edit-btn"
+                  onClick={() => setIsEditingName(true)}
+                  title="Edit your name"
+                >
+                  <EditIcon />
+                </button>
+              )}
+            </div>
+          )}
+          {canModify && !isEditingName && (
+            <button 
+              className="settings-modal__delete-btn"
+              onClick={() => setShowDeleteConfirm(true)}
+              title="Delete User"
+            >
+              <DeleteUserIcon />
+            </button>
+          )}
+        </div>
+
+        {/* Email */}
+        <div className="settings-modal__row">
+          <span className="settings-modal__label">Email</span>
+          <span className="settings-modal__value">{member.email}</span>
         </div>
 
         {/* Status */}
         <div className="settings-modal__row">
           <span className="settings-modal__label">Status</span>
           <div className="settings-modal__status">
-            <span className={`settings-modal__status-dot settings-modal__status-dot--${member.status}`} />
+            <span className={`settings-modal__status-dot settings-modal__status-dot--${member.isActive ? 'active' : 'inactive'}`} />
             <span className="settings-modal__status-text">
-              {member.status.charAt(0).toUpperCase() + member.status.slice(1)}
+              {member.isActive ? 'Active' : 'Inactive'}
             </span>
           </div>
         </div>
@@ -136,49 +243,62 @@ const MemberModal: React.FC<MemberModalProps> = ({ member, onClose, onSave, onDe
         {/* Role */}
         <div className="settings-modal__row">
           <span className="settings-modal__label">Role</span>
-          <div className="settings-modal__role-dropdown">
-            <button 
-              className="settings-modal__role-btn"
-              onClick={() => setShowRoleDropdown(!showRoleDropdown)}
-            >
-              <span 
-                className="settings-modal__role-badge"
-                style={{ 
-                  backgroundColor: roleColors[selectedRole].bg,
-                  color: roleColors[selectedRole].text,
-                  borderColor: roleColors[selectedRole].border
-                }}
+          {canModify ? (
+            <div className="settings-modal__role-dropdown">
+              <button 
+                className="settings-modal__role-btn"
+                onClick={() => setShowRoleDropdown(!showRoleDropdown)}
               >
-                {roleLabels[selectedRole]}
-              </span>
-              <ChevronDownIcon />
-            </button>
-            {showRoleDropdown && (
-              <div className="settings-modal__role-options">
-                {roles.map(role => (
-                  <button
-                    key={role}
-                    className="settings-modal__role-option"
-                    onClick={() => {
-                      setSelectedRole(role);
-                      setShowRoleDropdown(false);
-                    }}
-                  >
-                    <span 
-                      className="settings-modal__role-badge"
-                      style={{ 
-                        backgroundColor: roleColors[role].bg,
-                        color: roleColors[role].text,
-                        borderColor: roleColors[role].border
+                <span 
+                  className="settings-modal__role-badge"
+                  style={{ 
+                    backgroundColor: roleColors[selectedRole].bg,
+                    color: roleColors[selectedRole].text,
+                    borderColor: roleColors[selectedRole].border
+                  }}
+                >
+                  {roleLabels[selectedRole]}
+                </span>
+                <ChevronDownIcon />
+              </button>
+              {showRoleDropdown && (
+                <div className="settings-modal__role-options">
+                  {roles.map(role => (
+                    <button
+                      key={role}
+                      className="settings-modal__role-option"
+                      onClick={() => {
+                        setSelectedRole(role);
+                        setShowRoleDropdown(false);
                       }}
                     >
-                      {roleLabels[role]}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+                      <span 
+                        className="settings-modal__role-badge"
+                        style={{ 
+                          backgroundColor: roleColors[role].bg,
+                          color: roleColors[role].text,
+                          borderColor: roleColors[role].border
+                        }}
+                      >
+                        {roleLabels[role]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <span 
+              className="settings-modal__role-badge"
+              style={{ 
+                backgroundColor: roleColors[member.role].bg,
+                color: roleColors[member.role].text,
+                borderColor: roleColors[member.role].border
+              }}
+            >
+              {roleLabels[member.role]}
+            </span>
+          )}
         </div>
 
         {/* Joined */}
@@ -186,16 +306,18 @@ const MemberModal: React.FC<MemberModalProps> = ({ member, onClose, onSave, onDe
           <div className="settings-modal__joined">
             <span className="settings-modal__joined-label">Joined</span>
             <span className="settings-modal__joined-date">
-              {formatDate(member.joinedAt)} {formatTime(member.joinedAt)}
+              {formatDate(member.createdAt)} {formatTime(member.createdAt)}
             </span>
           </div>
-          <Button 
-            variant="primary" 
-            onClick={handleSave}
-            isLoading={isSaving}
-          >
-            Save Changes
-          </Button>
+          {canModify && (
+            <Button 
+              variant="primary" 
+              onClick={handleSave}
+              isLoading={isSaving}
+            >
+              Save Changes
+            </Button>
+          )}
         </div>
 
         {/* Delete Confirmation */}
@@ -208,9 +330,15 @@ const MemberModal: React.FC<MemberModalProps> = ({ member, onClose, onSave, onDe
               >
                 <CloseIcon />
               </button>
-              <p>Are you sure to delete user "{member.name}"?</p>
-              <Button variant="primary" onClick={handleDelete} className="settings-modal__confirm-btn">
-                Delete User
+              <p>Are you sure to remove "{member.fullName || member.email}"?</p>
+              <Button 
+                variant="primary" 
+                onClick={handleDelete} 
+                isLoading={isDeleting}
+                disabled={isDeleting}
+                className="settings-modal__confirm-btn"
+              >
+                {isDeleting ? 'Removing...' : 'Remove User'}
               </Button>
             </div>
           </div>
@@ -223,17 +351,19 @@ const MemberModal: React.FC<MemberModalProps> = ({ member, onClose, onSave, onDe
 // Add Member Modal Component
 interface AddMemberModalProps {
   onClose: () => void;
-  onAdd: (email: string, role: MemberRole) => void;
+  onAdd: (email: string, role: UserRole) => Promise<string | null>;
 }
 
 const AddMemberModal: React.FC<AddMemberModalProps> = ({ onClose, onAdd }) => {
   const [email, setEmail] = useState('');
-  const [selectedRole, setSelectedRole] = useState<MemberRole>('viewer');
+  const [selectedRole, setSelectedRole] = useState<UserRole>('VIEWER');
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [error, setError] = useState('');
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  const roles: MemberRole[] = ['admin', 'analyst', 'viewer'];
+  const roles: UserRole[] = ['ADMIN', 'ANALYST', 'VIEWER'];
 
   const handleAdd = async () => {
     if (!email) {
@@ -246,15 +376,69 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({ onClose, onAdd }) => {
     }
     
     setIsAdding(true);
-    await onAdd(email, selectedRole);
-    setIsAdding(false);
+    setError('');
+    
+    try {
+      const link = await onAdd(email, selectedRole);
+      if (link) {
+        setInviteLink(link);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create invitation');
+    } finally {
+      setIsAdding(false);
+    }
   };
+
+  const handleCopyLink = async () => {
+    if (inviteLink) {
+      await navigator.clipboard.writeText(inviteLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  // Show invite link after creation
+  if (inviteLink) {
+    return (
+      <div className="settings-modal-overlay" onClick={onClose}>
+        <div className="settings-modal settings-modal--add" onClick={e => e.stopPropagation()}>
+          <div className="settings-modal__header">
+            <h3 className="settings-modal__title">Invitation Created!</h3>
+            <button className="settings-modal__close-btn" onClick={onClose}>
+              <CloseIcon />
+            </button>
+          </div>
+
+          <div className="settings-modal__invite-success">
+            <p>Share this link with your team member:</p>
+            <div className="settings-modal__invite-link">
+              <input type="text" value={inviteLink} readOnly />
+              <button onClick={handleCopyLink} className="settings-modal__copy-btn">
+                {copied ? <CheckIcon /> : <CopyIcon />}
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <p className="settings-modal__invite-note">
+              This link expires in 7 days. The recipient will be asked to set their name and password.
+            </p>
+          </div>
+
+          <div className="settings-modal__actions">
+            <Button variant="primary" onClick={onClose} fullWidth>
+              Done
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="settings-modal-overlay" onClick={onClose}>
       <div className="settings-modal settings-modal--add" onClick={e => e.stopPropagation()}>
         <div className="settings-modal__header">
-          <h3 className="settings-modal__title">Add New Member</h3>
+          <h3 className="settings-modal__title">Invite New Member</h3>
           <button className="settings-modal__close-btn" onClick={onClose}>
             <CloseIcon />
           </button>
@@ -327,7 +511,7 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({ onClose, onAdd }) => {
         <div className="settings-modal__actions">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button variant="primary" onClick={handleAdd} isLoading={isAdding}>
-            Add Member
+            {isAdding ? 'Creating...' : 'Create Invite Link'}
           </Button>
         </div>
       </div>
@@ -337,65 +521,129 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({ onClose, onAdd }) => {
 
 // Main Settings Component
 export const Settings: React.FC = () => {
+  // Use organization from context for synced state across app
+  const { organization: contextOrganization, updateOrganizationName } = useOrganization();
+  
   const [organization, setOrganization] = useState<Organization | null>(null);
+  const [members, setMembers] = useState<OrganizationMember[]>([]);
+  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedMember, setSelectedMember] = useState<OrganizationMember | null>(null);
   const [showAddMember, setShowAddMember] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState('');
+  const [isSavingName, setIsSavingName] = useState(false);
+  const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Get current user from storage
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const currentUserId = currentUser?.id;
+  const currentUserRole: UserRole = currentUser?.role || 'VIEWER';
 
   useEffect(() => {
-    const fetchOrganization = async () => {
+    const fetchData = async () => {
       setIsLoading(true);
-      const data = await getOrganization();
-      setOrganization(data);
-      setEditedName(data.name);
-      setIsLoading(false);
+      setError(null);
+      
+      try {
+        // Fetch organization and members in parallel
+        const [orgData, membersData] = await Promise.all([
+          organizationService.getOrganization(),
+          organizationService.getMembers(),
+        ]);
+        
+        setOrganization(orgData);
+        setEditedName(orgData.name);
+        setMembers(membersData.users);
+        setPendingInvitations(membersData.pendingInvitations);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load organization data');
+      } finally {
+        setIsLoading(false);
+      }
     };
-    fetchOrganization();
+    
+    fetchData();
   }, []);
 
+  // Sync with context when it updates
+  useEffect(() => {
+    if (contextOrganization && organization) {
+      setOrganization(contextOrganization);
+      setEditedName(contextOrganization.name);
+    }
+  }, [contextOrganization]);
+
   const handleSaveName = async () => {
-    if (!editedName.trim()) return;
-    await updateOrganization({ name: editedName });
-    setOrganization(prev => prev ? { ...prev, name: editedName } : null);
-    setIsEditingName(false);
+    if (!editedName.trim() || !organization || isSavingName) return;
+    
+    setIsSavingName(true);
+    try {
+      const updated = await organizationService.updateOrganization({ name: editedName });
+      setOrganization(updated);
+      // Update context so Sidebar gets the new name immediately
+      updateOrganizationName(editedName);
+      setIsEditingName(false);
+    } catch (err) {
+      console.error('Failed to update organization name:', err);
+      // Optionally show error to user
+    } finally {
+      setIsSavingName(false);
+    }
   };
 
-  const handleMemberSave = async (memberId: string, role: MemberRole) => {
-    await updateMember({ memberId, role });
-    setOrganization(prev => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        members: prev.members.map(m => m.id === memberId ? { ...m, role } : m)
-      };
-    });
-    setSelectedMember(null);
+  const handleMemberSave = async (memberId: string, role: UserRole) => {
+    try {
+      const updated = await organizationService.updateMember(memberId, { role });
+      setMembers(prev => prev.map(m => m.id === memberId ? updated : m));
+      setSelectedMember(null);
+    } catch (err) {
+      console.error('Failed to update member:', err);
+    }
   };
 
   const handleMemberDelete = async (memberId: string) => {
-    await deleteMember(memberId);
-    setOrganization(prev => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        members: prev.members.filter(m => m.id !== memberId)
-      };
-    });
-    setSelectedMember(null);
+    setDeletingMemberId(memberId);
+    try {
+      await organizationService.removeMember(memberId);
+      setMembers(prev => prev.filter(m => m.id !== memberId));
+      setSelectedMember(null);
+    } catch (err) {
+      console.error('Failed to remove member:', err);
+      setError(err instanceof Error ? err.message : 'Failed to remove member');
+    } finally {
+      setDeletingMemberId(null);
+    }
   };
 
-  const handleAddMember = async (email: string, role: MemberRole) => {
-    const newMember = await addMember({ email, role });
-    setOrganization(prev => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        members: [...prev.members, newMember]
-      };
-    });
-    setShowAddMember(false);
+  const handleUpdateMemberName = async (memberId: string, fullName: string) => {
+    try {
+      const updated = await userService.updateProfile({ fullName });
+      // Update members list
+      setMembers(prev => prev.map(m => m.id === memberId ? { ...m, fullName: updated.fullName } : m));
+      // Update current user in storage
+      localStorage.setItem('user', JSON.stringify(updated));
+      // Update selected member if it's the same
+      if (selectedMember?.id === memberId) {
+        setSelectedMember({ ...selectedMember, fullName: updated.fullName });
+      }
+    } catch (err) {
+      console.error('Failed to update member name:', err);
+      throw err;
+    }
+  };
+
+  const handleAddMember = async (email: string, role: UserRole): Promise<string | null> => {
+    try {
+      const invitation = await organizationService.inviteMember({ email, role });
+      // Add to pending invitations
+      setPendingInvitations(prev => [...prev, invitation]);
+      // Return the invite link
+      return organizationService.getInviteLink(invitation.token);
+    } catch (err) {
+      throw err;
+    }
   };
 
   if (isLoading) {
@@ -409,18 +657,20 @@ export const Settings: React.FC = () => {
     );
   }
 
-  if (!organization) {
+  if (error || !organization) {
     return (
       <MainLayout>
         <div className="settings__error">
           <h2>Organization Not Found</h2>
-          <p>Unable to load organization data.</p>
+          <p>{error || 'Unable to load organization data.'}</p>
         </div>
       </MainLayout>
     );
   }
 
-  const usagePercentage = (organization.usageStats.used / organization.usageStats.total) * 100;
+  const remainingPercentage = organization.credits.total > 0 
+    ? (organization.credits.remaining / organization.credits.total) * 100 
+    : 0;
 
   return (
     <MainLayout>
@@ -433,12 +683,12 @@ export const Settings: React.FC = () => {
             <h2 className="settings__card-title">Organization Members</h2>
             
             <div className="settings__members-list">
-              {organization.members.map(member => (
+              {/* Active Members */}
+              {members.map(member => (
                 <div key={member.id} className="settings__member">
                   <div className="settings__member-info">
                     <span className="settings__member-name">
-                      {member.name}
-                      {member.isVerified && <VerifiedIcon />}
+                      {member.fullName || member.email}
                     </span>
                     <span 
                       className="settings__member-role"
@@ -451,23 +701,65 @@ export const Settings: React.FC = () => {
                       {roleLabels[member.role]}
                     </span>
                   </div>
-                  <button 
-                    className="settings__member-settings"
-                    onClick={() => setSelectedMember(member)}
-                  >
-                    <SettingsIcon />
-                  </button>
+                  {deletingMemberId === member.id ? (
+                    <div className="settings__member-deleting">
+                      <span className="settings__spinner" />
+                      <span>Removing...</span>
+                    </div>
+                  ) : (
+                    <button 
+                      className="settings__member-settings"
+                      onClick={() => setSelectedMember(member)}
+                    >
+                      <SettingsIcon />
+                    </button>
+                  )}
                 </div>
               ))}
+              
+              {/* Pending Invitations */}
+              {pendingInvitations.length > 0 && (
+                <>
+                  <div className="settings__pending-divider">
+                    <span>Pending Invitations</span>
+                  </div>
+                  {pendingInvitations.map(invitation => (
+                    <div key={invitation.id} className="settings__member settings__member--pending">
+                      <div className="settings__member-info">
+                        <span className="settings__member-name settings__member-name--pending">
+                          <ClockIcon />
+                          <span>{invitation.email}</span>
+                        </span>
+                        <span 
+                          className="settings__member-role"
+                          style={{ 
+                            backgroundColor: roleColors[invitation.role].bg,
+                            color: roleColors[invitation.role].text,
+                            borderColor: roleColors[invitation.role].border
+                          }}
+                        >
+                          {roleLabels[invitation.role]}
+                        </span>
+                      </div>
+                      <div className="settings__member-expires">
+                        <span className="settings__member-expires-label">Expires</span>
+                        <span className="settings__member-expires-date">{formatDate(invitation.expiresAt)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
 
-            <button 
-              className="settings__add-member"
-              onClick={() => setShowAddMember(true)}
-            >
-              <PlusIcon />
-              <span>Add Member</span>
-            </button>
+            {(currentUserRole === 'OWNER' || currentUserRole === 'ADMIN') && (
+              <button 
+                className="settings__add-member"
+                onClick={() => setShowAddMember(true)}
+              >
+                <PlusIcon />
+                <span>Add Member</span>
+              </button>
+            )}
           </div>
 
           {/* Organization Settings Card */}
@@ -478,23 +770,44 @@ export const Settings: React.FC = () => {
               <label className="settings__field-label">Organization Name</label>
               <div className="settings__field-input">
                 {isEditingName ? (
-                  <input 
-                    type="text"
-                    value={editedName}
-                    onChange={(e) => setEditedName(e.target.value)}
-                    onBlur={handleSaveName}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSaveName()}
-                    autoFocus
-                  />
+                  <div className="settings__field-edit-wrapper">
+                    <input 
+                      type="text"
+                      value={editedName}
+                      onChange={(e) => setEditedName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleSaveName();
+                        } else if (e.key === 'Escape') {
+                          setEditedName(organization.name);
+                          setIsEditingName(false);
+                        }
+                      }}
+                      autoFocus
+                      className="settings__field-edit-input"
+                    />
+                    <Button 
+                      variant="primary" 
+                      size="sm"
+                      onClick={handleSaveName}
+                      isLoading={isSavingName}
+                      disabled={isSavingName || !editedName.trim() || editedName === organization.name}
+                      className="settings__field-save-btn"
+                    >
+                      Save
+                    </Button>
+                  </div>
                 ) : (
                   <>
                     <span>{organization.name}</span>
-                    <button 
-                      className="settings__field-edit"
-                      onClick={() => setIsEditingName(true)}
-                    >
-                      <EditIcon />
-                    </button>
+                    {(currentUserRole === 'OWNER' || currentUserRole === 'ADMIN') && (
+                      <button 
+                        className="settings__field-edit"
+                        onClick={() => setIsEditingName(true)}
+                      >
+                        <EditIcon />
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -503,28 +816,28 @@ export const Settings: React.FC = () => {
             <div className="settings__field">
               <label className="settings__field-label">Subscription Plan</label>
               <div className="settings__field-value">
-                {formatPlan(organization.subscriptionPlan)}
+                {planLabels[organization.plan]}
               </div>
             </div>
 
             <div className="settings__field">
-              <label className="settings__field-label">Billing Start Date</label>
+              <label className="settings__field-label">Billing Cycle Start</label>
               <div className="settings__field-value">
-                {formatDate(organization.billingStartDate)} {formatTime(organization.billingStartDate)}
+                {formatDate(organization.billing.cycleStart)}
               </div>
             </div>
 
             <div className="settings__field">
-              <label className="settings__field-label">Usage Stats</label>
+              <label className="settings__field-label">Credits Remaining</label>
               <div className="settings__usage">
                 <div className="settings__usage-bar">
                   <div 
                     className="settings__usage-fill" 
-                    style={{ width: `${usagePercentage}%` }}
+                    style={{ width: `${remainingPercentage}%` }}
                   />
                 </div>
                 <span className="settings__usage-text">
-                  {organization.usageStats.used}/{organization.usageStats.total}
+                  {organization.credits.remaining} / {organization.credits.total} credits
                 </span>
               </div>
             </div>
@@ -546,6 +859,9 @@ export const Settings: React.FC = () => {
           onClose={() => setSelectedMember(null)}
           onSave={handleMemberSave}
           onDelete={handleMemberDelete}
+          onUpdateName={handleUpdateMemberName}
+          currentUserRole={currentUserRole}
+          currentUserId={currentUserId}
         />
       )}
 
