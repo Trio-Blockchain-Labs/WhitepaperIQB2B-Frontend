@@ -4,6 +4,7 @@ import { AuthLayout } from '../../layouts';
 import { Button, Input } from '../../components/common';
 import { Logo } from '../../components/Logo';
 import { authService } from '../../services';
+import { useToast } from '../../context/ToastContext';
 import type { LoginCredentials } from '../../types';
 import './Login.css';
 
@@ -23,6 +24,7 @@ const LockIcon = () => (
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
+  const { showError, showSuccess } = useToast();
   const [formData, setFormData] = useState<LoginCredentials>({
     email: '',
     password: '',
@@ -30,7 +32,6 @@ export const Login: React.FC = () => {
   const [rememberMe, setRememberMe] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [isLoading, setIsLoading] = useState(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
 
   const validateForm = (): boolean => {
     const newErrors: { email?: string; password?: string } = {};
@@ -68,7 +69,6 @@ export const Login: React.FC = () => {
     if (errors[name as keyof typeof errors]) {
       setErrors((prev) => ({ ...prev, [name]: undefined }));
     }
-    setLoginError(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -77,7 +77,6 @@ export const Login: React.FC = () => {
     if (!validateForm()) return;
 
     setIsLoading(true);
-    setLoginError(null);
 
     try {
       // Call real API
@@ -91,12 +90,16 @@ export const Login: React.FC = () => {
       // Dispatch event to notify OrganizationContext to fetch data
       window.dispatchEvent(new Event('user-logged-in'));
       
+      showSuccess('Login successful! Redirecting...');
+      
       // Redirect to search page
-      navigate('/search');
+      setTimeout(() => {
+        navigate('/search');
+      }, 500);
     } catch (error) {
       // Handle error message
       const message = error instanceof Error ? error.message : 'Invalid email or password';
-      setLoginError(message);
+      showError(message);
     } finally {
       setIsLoading(false);
     }
@@ -116,17 +119,6 @@ export const Login: React.FC = () => {
           </div>
 
           <form className="login__form" onSubmit={handleSubmit}>
-            {loginError && (
-              <div className="login__error-banner">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="8" x2="12" y2="12" />
-                  <line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-                <span>{loginError}</span>
-              </div>
-            )}
-
             <Input
               name="email"
               type="email"

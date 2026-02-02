@@ -23,9 +23,6 @@ export interface BaseComponentProps {
 // Re-export crypto types
 export * from './crypto';
 
-// Re-export token types
-export * from './token';
-
 // Re-export organization types
 export * from './organization';
 
@@ -34,3 +31,23 @@ export * from './project';
 
 // Re-export invite types
 export * from './invite';
+
+// Re-export search types
+export * from './search';
+
+// Re-export analysis types (includes AIInsight and AnalysisStatus)
+export * from './analysis';
+
+// Re-export token types (excluding duplicates)
+export type { 
+  TokenHeader, 
+  HolderInfo, 
+  ExchangeInfo, 
+  FlowData, 
+  InstitutionalHolding, 
+  SocialData, 
+  CriteriaAssessment, 
+  TokenAnalysis, 
+  TokenDetail,
+  AnalysisUIStatus
+} from './token';

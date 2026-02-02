@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../layouts';
-import { searchCoins } from '../../mock';
 import { getCategoryIcon } from '../../components/icons';
-import type { Coin } from '../../types';
+import { searchService } from '../../services';
+import { getErrorMessage } from '../../services/api';
+import type { SearchResult } from '../../types';
 import './SearchResults.css';
 
 const SearchIcon = () => (
@@ -36,17 +37,38 @@ export const SearchResults: React.FC = () => {
   const query = searchParams.get('q') || '';
   
   const [searchQuery, setSearchQuery] = useState(query);
-  const [results, setResults] = useState<Coin[]>([]);
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setIsLoading(true);
-    // Simulate search
-    setTimeout(() => {
-      const searchResults = searchCoins(query);
-      setResults(searchResults);
+    if (!query.trim()) {
+      setResults([]);
+      setTotalCount(0);
       setIsLoading(false);
-    }, 300);
+      return;
+    }
+
+    const performSearch = async () => {
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        const searchResponse = await searchService.search(query.trim()); // No limit - get all results
+        setResults(searchResponse.coins || []);
+        setTotalCount(searchResponse.coins?.length || 0);
+      } catch (err) {
+        console.error('Search failed:', err);
+        setError(getErrorMessage(err));
+        setResults([]);
+        setTotalCount(0);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    performSearch();
   }, [query]);
 
   const handleSearch = (e: React.FormEvent) => {
@@ -56,8 +78,9 @@ export const SearchResults: React.FC = () => {
     }
   };
 
-  const handleTokenClick = (coin: Coin) => {
-    navigate(`/token/${coin.ticker}`);
+  const handleTokenClick = (result: SearchResult) => {
+    // Use coingeckoId (id field) for navigation
+    navigate(`/token/${result.id}`);
   };
 
   return (
@@ -88,34 +111,54 @@ export const SearchResults: React.FC = () => {
             <h1 className="search-results__title">
               Search Results for "{query}"
             </h1>
-            {!isLoading && (
+            {!isLoading && !error && (
               <p className="search-results__count">
-                {results.length} {results.length === 1 ? 'result' : 'results'} found
+                {totalCount} {totalCount === 1 ? 'result' : 'results'} found
               </p>
             )}
           </div>
 
-          {isLoading ? (
+          {error ? (
+            <div className="search-results__error">
+              <p>{error}</p>
+            </div>
+          ) : isLoading ? (
             <div className="search-results__loading">
               <span className="search-results__spinner" />
               <span>Searching...</span>
             </div>
           ) : results.length > 0 ? (
             <div className="search-results__list">
-              {results.map((coin) => (
+              {results.map((result) => (
                 <button
-                  key={coin.id}
+                  key={result.id}
                   className="search-results__item"
-                  onClick={() => handleTokenClick(coin)}
+                  onClick={() => handleTokenClick(result)}
                 >
-                  <div className="search-results__item-icon">
-                    {getCategoryIcon(categoryToIconType[coin.category || ''] || 'layer1', 24)}
-                  </div>
+                  {result.thumb && (
+                    <div className="search-results__item-icon">
+                      <img 
+                        src={result.thumb.replace('/thumb/', '/small/')} 
+                        alt={result.name}
+                        onError={(e) => {
+                          // Fallback to original thumb if small fails
+                          const target = e.target as HTMLImageElement;
+                          if (target.src !== result.thumb) {
+                            target.src = result.thumb;
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
+                  {!result.thumb && (
+                    <div className="search-results__item-icon">
+                      {getCategoryIcon('layer1', 24)}
+                    </div>
+                  )}
                   <div className="search-results__item-info">
-                    <span className="search-results__item-name">{coin.name}</span>
-                    <span className="search-results__item-category">{coin.category}</span>
+                    <span className="search-results__item-name">{result.name}</span>
                   </div>
-                  <span className="search-results__item-ticker">${coin.ticker}</span>
+                  <span className="search-results__item-ticker">${result.symbol}</span>
                   <span className="search-results__item-arrow">
                     <ArrowRightIcon />
                   </span>

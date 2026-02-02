@@ -2,12 +2,13 @@
 
 /**
  * User roles in the system
+ * - SYSTEM_ADMIN: System-level admin with full access across all organizations (cannot be assigned via API)
  * - OWNER: Full control, cannot be removed
  * - ADMIN: Can manage users and org settings
  * - ANALYST: Can create analyses and projects
  * - VIEWER: Read-only access
  */
-export type UserRole = 'OWNER' | 'ADMIN' | 'ANALYST' | 'VIEWER';
+export type UserRole = 'SYSTEM_ADMIN' | 'OWNER' | 'ADMIN' | 'ANALYST' | 'VIEWER';
 
 /**
  * User object from API

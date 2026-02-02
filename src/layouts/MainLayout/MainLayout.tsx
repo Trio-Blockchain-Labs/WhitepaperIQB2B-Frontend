@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from '../../components/Sidebar';
 import { Logo } from '../../components/Logo';
 import './MainLayout.css';
@@ -19,6 +19,7 @@ const HamburgerIcon = () => (
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   const toggleSidebar = () => {
     setIsSidebarOpen((prev) => !prev);
@@ -28,8 +29,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     setIsSidebarOpen(false);
   };
 
-  // Only show the logo next to hamburger on token detail/analysis pages
-  const showTopbarLogo = location.pathname.startsWith('/token/');
+  // Show the logo next to hamburger on token detail, projects, and settings pages
+  const showTopbarLogo = location.pathname.startsWith('/token/') || 
+                         location.pathname === '/projects' || 
+                         location.pathname === '/settings';
+
+  const handleLogoClick = () => {
+    navigate('/search');
+  };
 
   return (
     <div className="main-layout">
@@ -44,7 +51,15 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         >
           <HamburgerIcon />
         </button>
-        {showTopbarLogo && <Logo className="main-layout__logo" size="sm" />}
+        {showTopbarLogo && (
+          <button 
+            className="main-layout__logo-btn"
+            onClick={handleLogoClick}
+            aria-label="Go to search"
+          >
+            <Logo className="main-layout__logo" size="md" />
+          </button>
+        )}
       </header>
 
       <main className="main-layout__content">

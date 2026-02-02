@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../layouts';
-import { searchCoins, trendingCoins, categories, recentAnalyses } from '../../mock';
+import { trendingCoins, categories, recentAnalyses } from '../../mock';
 import { getCategoryIcon } from '../../components/icons';
 import { Logo } from '../../components/Logo';
-import type { Coin } from '../../types';
+import { searchService } from '../../services';
+import type { SearchResult, Coin } from '../../types';
 import './Search.css';
 
 const SearchIcon = () => (
@@ -33,12 +34,28 @@ const AnalysisIcon = () => (
 export const Search: React.FC = () => {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Coin[]>([]);
+  const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const searchTimeoutRef = useRef<number | null>(null);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleSearch = useCallback((searchQuery: string) => {
     setQuery(searchQuery);
+    
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+    }
     
     if (!searchQuery.trim()) {
       setResults([]);
@@ -49,27 +66,44 @@ export const Search: React.FC = () => {
     setIsSearching(true);
     setShowDropdown(true);
     
-    setTimeout(() => {
-      const searchResults = searchCoins(searchQuery);
-      setResults(searchResults);
-      setIsSearching(false);
-    }, 150);
+    // Debounce search API call - wait 2 seconds after user stops typing
+    searchTimeoutRef.current = window.setTimeout(async () => {
+      try {
+        const searchResponse = await searchService.search(searchQuery.trim(), 7); // Limit to 7 for autocomplete
+        setResults(searchResponse.coins || []);
+      } catch (error) {
+        console.error('Search failed:', error);
+        setResults([]);
+      } finally {
+        setIsSearching(false);
+        searchTimeoutRef.current = null;
+      }
+    }, 2000); // 2 seconds debounce
   }, []);
 
-  // Handle form submit (Enter key or search button)
+  // Handle form submit (Enter key or search button) - immediate navigation
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Clear any pending search timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+    }
+    
     if (query.trim()) {
       setShowDropdown(false);
+      // Navigate immediately to results page (which will make its own API call)
       navigate(`/search/results?q=${encodeURIComponent(query.trim())}`);
     }
   };
 
   // Handle dropdown result click - go directly to token detail
-  const handleResultClick = (coin: Coin) => {
+  const handleResultClick = (result: SearchResult) => {
     setShowDropdown(false);
     setQuery('');
-    navigate(`/token/${coin.ticker}`);
+    // Use coingeckoId (id field) for navigation
+    navigate(`/token/${result.id}`);
   };
 
   const handleTrendingClick = (coin: Coin) => {
@@ -130,18 +164,32 @@ export const Search: React.FC = () => {
                   </div>
                 ) : results.length > 0 ? (
                   <>
-                    {results.map((coin) => (
+                    {results.map((result) => (
                       <button
-                        key={coin.id}
+                        key={result.id}
                         type="button"
                         className="search__result-item"
-                        onClick={() => handleResultClick(coin)}
+                        onClick={() => handleResultClick(result)}
                       >
+                        {result.thumb && (
+                          <div className="search__result-icon">
+                            <img 
+                              src={result.thumb.replace('/thumb/', '/small/')} 
+                              alt={result.name}
+                              onError={(e) => {
+                                // Fallback to original thumb if small fails
+                                const target = e.target as HTMLImageElement;
+                                if (result.thumb && target.src !== result.thumb) {
+                                  target.src = result.thumb;
+                                }
+                              }}
+                            />
+                          </div>
+                        )}
                         <div className="search__result-info">
-                          <span className="search__result-name">{coin.name}</span>
-                          <span className="search__result-category">{coin.category}</span>
+                          <span className="search__result-name">{result.name}</span>
                         </div>
-                        <span className="search__result-ticker">${coin.ticker}</span>
+                        <span className="search__result-ticker">${result.symbol}</span>
                       </button>
                     ))}
                     <div className="search__results-footer">

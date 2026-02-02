@@ -1,12 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../layouts';
-import { 
-  getAnalyzedProjects, 
-  riskLevelColors, 
-  projectCategories 
-} from '../../mock';
-import type { AnalyzedProject, ProjectFilters, RiskLevel } from '../../types';
+import { projectService } from '../../services';
+import { useToast } from '../../context/ToastContext';
+import type { ProjectListItem, AnalysisStatus } from '../../types/project';
 import './Projects.css';
 
 // Icons
@@ -49,7 +46,7 @@ const ChevronDownIcon = () => (
 );
 
 const DocumentIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
     <polyline points="14 2 14 8 20 8" />
     <line x1="16" y1="13" x2="8" y2="13" />
@@ -58,53 +55,113 @@ const DocumentIcon = () => (
 );
 
 // Helpers
-const formatNumber = (num: number): string => {
-  if (num >= 1e12) return `$${(num / 1e12).toFixed(2)}T`;
-  if (num >= 1e9) return `$${(num / 1e9).toFixed(1)}B`;
-  if (num >= 1e6) return `$${(num / 1e6).toFixed(1)}M`;
-  return `$${num.toLocaleString()}`;
-};
-
 const formatDate = (dateStr: string): string => {
   const date = new Date(dateStr);
   return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-const getScoreColor = (score: number): string => {
-  if (score >= 80) return '#22c55e';
-  if (score >= 60) return '#f59e0b';
-  return '#ef4444';
-};
+interface ProjectFilters {
+  search: string;
+  analysisStatus: AnalysisStatus | 'all';
+  sortBy: 'date' | 'name';
+  sortOrder: 'asc' | 'desc';
+  page: number;
+  limit: number;
+}
 
 export const Projects: React.FC = () => {
   const navigate = useNavigate();
-  const [projects, setProjects] = useState<AnalyzedProject[]>([]);
+  const { showError } = useToast();
+  const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1,
+  });
   const [filters, setFilters] = useState<ProjectFilters>({
     search: '',
-    riskLevel: 'all',
-    category: 'all',
+    analysisStatus: 'all',
     sortBy: 'date',
     sortOrder: 'desc',
+    page: 1,
+    limit: 10,
   });
   const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     const fetchProjects = async () => {
       setIsLoading(true);
-      const data = await getAnalyzedProjects(filters);
-      setProjects(data);
-      setIsLoading(false);
+      try {
+        const params: any = {
+          page: filters.page,
+          limit: filters.limit,
+          search: filters.search || undefined,
+        };
+        
+        if (filters.analysisStatus !== 'all') {
+          params.analysisStatus = filters.analysisStatus;
+        }
+        
+        const response = await projectService.listProjects(params);
+        setProjects(response.data);
+        setPagination(response.pagination);
+        
+        // Apply client-side sorting (API doesn't support sort)
+        let sortedProjects = [...response.data];
+        if (filters.sortBy === 'date') {
+          sortedProjects.sort((a, b) => {
+            const dateA = new Date(a.createdAt).getTime();
+            const dateB = new Date(b.createdAt).getTime();
+            return filters.sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+          });
+        } else if (filters.sortBy === 'name') {
+          sortedProjects.sort((a, b) => {
+            const nameA = a.name.toLowerCase();
+            const nameB = b.name.toLowerCase();
+            return filters.sortOrder === 'asc' 
+              ? nameA.localeCompare(nameB)
+              : nameB.localeCompare(nameA);
+          });
+        }
+        setProjects(sortedProjects);
+      } catch (error) {
+        console.error('Failed to fetch projects:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Failed to load projects';
+        showError(errorMessage);
+        setProjects([]);
+      } finally {
+        setIsLoading(false);
+      }
     };
-    fetchProjects();
-  }, [filters]);
+    
+    // Debounce search
+    const timeoutId = setTimeout(() => {
+      fetchProjects();
+    }, filters.search ? 500 : 0);
+    
+    return () => clearTimeout(timeoutId);
+  }, [filters, showError]);
 
-  const handleFilterChange = (key: keyof ProjectFilters, value: string) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
+  const handleFilterChange = (key: keyof ProjectFilters, value: string | number) => {
+    setFilters(prev => ({ ...prev, [key]: value, page: 1 })); // Reset to page 1 on filter change
   };
 
-  const handleProjectClick = (project: AnalyzedProject) => {
-    navigate(`/token/${project.tokenTicker}`);
+  const handlePageChange = (newPage: number) => {
+    setFilters(prev => ({ ...prev, page: newPage }));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleProjectClick = (project: ProjectListItem) => {
+    // Navigate using coingeckoId if available, otherwise use project id
+    if (project.coingeckoId) {
+      navigate(`/token/${project.coingeckoId}?projectId=${encodeURIComponent(project.id)}`);
+    } else {
+      // If no coingeckoId, we might need to handle this differently
+      // For now, try to navigate with slug or id
+      navigate(`/token/${project.slug || project.id}?projectId=${encodeURIComponent(project.id)}`);
+    }
   };
 
   return (
@@ -114,7 +171,7 @@ export const Projects: React.FC = () => {
           <div className="projects__header-left">
             <DocumentIcon />
             <h1 className="projects__title">Analyzed Projects</h1>
-            <span className="projects__count">{projects.length} projects</span>
+            <span className="projects__count">{pagination.total} projects</span>
           </div>
         </header>
 
@@ -149,10 +206,8 @@ export const Projects: React.FC = () => {
             >
               <option value="date-desc">Newest First</option>
               <option value="date-asc">Oldest First</option>
-              <option value="score-desc">Highest Score</option>
-              <option value="score-asc">Lowest Score</option>
-              <option value="marketCap-desc">Highest Market Cap</option>
               <option value="name-asc">Name A-Z</option>
+              <option value="name-desc">Name Z-A</option>
             </select>
             <ChevronDownIcon />
           </div>
@@ -162,28 +217,16 @@ export const Projects: React.FC = () => {
         {showFilters && (
           <div className="projects__filters-extended">
             <div className="projects__filter-group">
-              <label>Risk Level</label>
+              <label>Analysis Status</label>
               <select 
-                value={filters.riskLevel}
-                onChange={(e) => handleFilterChange('riskLevel', e.target.value)}
+                value={filters.analysisStatus}
+                onChange={(e) => handleFilterChange('analysisStatus', e.target.value)}
               >
-                <option value="all">All Levels</option>
-                <option value="low">Low Risk</option>
-                <option value="medium">Medium Risk</option>
-                <option value="high">High Risk</option>
-              </select>
-            </div>
-
-            <div className="projects__filter-group">
-              <label>Category</label>
-              <select 
-                value={filters.category}
-                onChange={(e) => handleFilterChange('category', e.target.value)}
-              >
-                <option value="all">All Categories</option>
-                {projectCategories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
+                <option value="all">All Statuses</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="PROCESSING">Processing</option>
+                <option value="PENDING">Pending</option>
+                <option value="FAILED">Failed</option>
               </select>
             </div>
           </div>
@@ -202,67 +245,109 @@ export const Projects: React.FC = () => {
             <p>Try adjusting your filters or search criteria.</p>
           </div>
         ) : (
-          <div className="projects__list">
-            {projects.map(project => (
-              <div 
-                key={project.id} 
-                className="projects__card"
-                onClick={() => handleProjectClick(project)}
-              >
-                <div className="projects__card-header">
-                  <div className="projects__card-title">
-                    <h3>{project.tokenName}</h3>
-                    <span className="projects__card-ticker">{project.tokenTicker}</span>
+          <>
+            <div className="projects__list">
+              {projects.map(project => (
+                <div 
+                  key={project.id} 
+                  className="projects__card"
+                  onClick={() => handleProjectClick(project)}
+                >
+                  <div className="projects__card-header">
+                    <div className="projects__card-title">
+                      {project.imageUrl && (
+                        <img 
+                          src={project.imageUrl} 
+                          alt={project.name}
+                          className="projects__card-logo"
+                        />
+                      )}
+                      <div>
+                        <h3>{project.name}</h3>
+                        {project.symbol && (
+                          <span className="projects__card-ticker">{project.symbol}</span>
+                        )}
+                      </div>
+                    </div>
+                    {project.latestAnalysisStatus && (
+                      <div 
+                        className="projects__card-status"
+                        style={{ 
+                          backgroundColor: project.latestAnalysisStatus === 'COMPLETED' 
+                            ? 'rgba(34, 197, 94, 0.15)' 
+                            : project.latestAnalysisStatus === 'PROCESSING'
+                            ? 'rgba(59, 130, 246, 0.15)'
+                            : project.latestAnalysisStatus === 'FAILED'
+                            ? 'rgba(239, 68, 68, 0.15)'
+                            : 'rgba(245, 158, 11, 0.15)',
+                          color: project.latestAnalysisStatus === 'COMPLETED' 
+                            ? '#16a34a' 
+                            : project.latestAnalysisStatus === 'PROCESSING'
+                            ? '#2563eb'
+                            : project.latestAnalysisStatus === 'FAILED'
+                            ? '#dc2626'
+                            : '#d97706',
+                        }}
+                      >
+                        {project.latestAnalysisStatus}
+                      </div>
+                    )}
                   </div>
-                  <div 
-                    className="projects__card-score"
-                    style={{ 
-                      backgroundColor: `${getScoreColor(project.overallScore)}20`,
-                      color: getScoreColor(project.overallScore),
-                      borderColor: getScoreColor(project.overallScore)
-                    }}
-                  >
-                    {project.overallScore}
-                  </div>
-                </div>
 
-                <p className="projects__card-summary">{project.summary}</p>
+                  <div className="projects__card-meta">
+                    <div className="projects__card-info">
+                      {project.analysisCount > 0 && (
+                        <span className="projects__card-analyses">
+                          {project.analysisCount} {project.analysisCount === 1 ? 'analysis' : 'analyses'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="projects__card-date">
+                      <CalendarIcon />
+                      <span>{formatDate(project.createdAt)}</span>
+                    </div>
+                  </div>
 
-                <div className="projects__card-meta">
-                  <div className="projects__card-info">
-                    <span 
-                      className="projects__card-risk"
-                      style={{ 
-                        backgroundColor: riskLevelColors[project.riskLevel as RiskLevel].bg,
-                        color: riskLevelColors[project.riskLevel as RiskLevel].text,
-                        borderColor: riskLevelColors[project.riskLevel as RiskLevel].border
-                      }}
-                    >
-                      {project.riskLevel.charAt(0).toUpperCase() + project.riskLevel.slice(1)} Risk
-                    </span>
-                    <span className="projects__card-category">{project.category}</span>
-                    <span className="projects__card-mcap">{formatNumber(project.marketCap)}</span>
-                  </div>
-                  <div className="projects__card-date">
-                    <CalendarIcon />
-                    <span>{formatDate(project.analyzedAt)}</span>
-                  </div>
+                  {project.websiteUrl && (
+                    <div className="projects__card-footer">
+                      <a 
+                        href={project.websiteUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="projects__card-link"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Visit Website
+                      </a>
+                    </div>
+                  )}
                 </div>
+              ))}
+            </div>
 
-                <div className="projects__card-footer">
-                  <span className="projects__card-analyst">by {project.analyzedBy}</span>
-                  <div className="projects__card-price">
-                    <span className="projects__card-price-value">
-                      ${project.price < 1 ? project.price.toFixed(8) : project.price.toLocaleString()}
-                    </span>
-                    <span className={`projects__card-change ${project.priceChange24h >= 0 ? 'positive' : 'negative'}`}>
-                      {project.priceChange24h >= 0 ? '+' : ''}{project.priceChange24h.toFixed(2)}%
-                    </span>
-                  </div>
-                </div>
+            {/* Pagination */}
+            {pagination.totalPages > 1 && (
+              <div className="projects__pagination">
+                <button
+                  className="projects__pagination-btn"
+                  onClick={() => handlePageChange(pagination.page - 1)}
+                  disabled={pagination.page === 1}
+                >
+                  Previous
+                </button>
+                <span className="projects__pagination-info">
+                  Page {pagination.page} of {pagination.totalPages}
+                </span>
+                <button
+                  className="projects__pagination-btn"
+                  onClick={() => handlePageChange(pagination.page + 1)}
+                  disabled={pagination.page >= pagination.totalPages}
+                >
+                  Next
+                </button>
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </div>
     </MainLayout>

@@ -150,8 +150,8 @@ const MemberModal: React.FC<MemberModalProps> = ({
     }
   };
 
-  // Can't modify OWNER or self
-  const canModify = member.role !== 'OWNER' && (currentUserRole === 'OWNER' || currentUserRole === 'ADMIN');
+  // Can't modify OWNER, SYSTEM_ADMIN or self
+  const canModify = member.role !== 'OWNER' && member.role !== 'SYSTEM_ADMIN' && (currentUserRole === 'OWNER' || currentUserRole === 'ADMIN' || currentUserRole === 'SYSTEM_ADMIN');
   const roles: UserRole[] = ['ADMIN', 'ANALYST', 'VIEWER'];
 
   return (
@@ -751,7 +751,7 @@ export const Settings: React.FC = () => {
               )}
             </div>
 
-            {(currentUserRole === 'OWNER' || currentUserRole === 'ADMIN') && (
+            {(currentUserRole === 'OWNER' || currentUserRole === 'ADMIN' || currentUserRole === 'SYSTEM_ADMIN') && (
               <button 
                 className="settings__add-member"
                 onClick={() => setShowAddMember(true)}
@@ -800,7 +800,7 @@ export const Settings: React.FC = () => {
                 ) : (
                   <>
                     <span>{organization.name}</span>
-                    {(currentUserRole === 'OWNER' || currentUserRole === 'ADMIN') && (
+                    {(currentUserRole === 'OWNER' || currentUserRole === 'ADMIN' || currentUserRole === 'SYSTEM_ADMIN') && (
                       <button 
                         className="settings__field-edit"
                         onClick={() => setIsEditingName(true)}

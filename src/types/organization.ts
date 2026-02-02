@@ -101,6 +101,7 @@ export type { UserRole } from './auth.types';
 
 // UI Helpers - Role colors for display
 export const roleColors: Record<UserRole, { bg: string; text: string; border: string }> = {
+  SYSTEM_ADMIN: { bg: 'rgba(59, 130, 246, 0.15)', text: '#2563eb', border: '#3b82f6' },
   OWNER: { bg: 'rgba(34, 197, 94, 0.15)', text: '#16a34a', border: '#22c55e' },
   ADMIN: { bg: 'rgba(239, 68, 68, 0.15)', text: '#dc2626', border: '#ef4444' },
   ANALYST: { bg: 'rgba(245, 158, 11, 0.15)', text: '#d97706', border: '#f59e0b' },
@@ -109,6 +110,7 @@ export const roleColors: Record<UserRole, { bg: string; text: string; border: st
 
 // UI Helpers - Role labels for display
 export const roleLabels: Record<UserRole, string> = {
+  SYSTEM_ADMIN: 'System Admin',
   OWNER: 'Owner',
   ADMIN: 'Admin',
   ANALYST: 'Analyst',

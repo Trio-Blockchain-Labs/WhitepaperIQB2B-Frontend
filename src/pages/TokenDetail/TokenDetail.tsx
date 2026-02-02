@@ -1,10 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { MainLayout } from '../../layouts';
 import { Button } from '../../components/common';
-import { getTokenDetail, getTokenAnalysis, startNewAnalysis } from '../../mock';
-import type { TokenDetail as TokenDetailType, TokenAnalysis, AnalysisStatus, InstitutionalHolding } from '../../types';
+import { projectService, analysisService } from '../../services';
+import { getErrorMessage } from '../../services/api';
+import { useToast } from '../../context/ToastContext';
+import type { 
+  Analysis, 
+  Holder,
+  Ticker,
+  CompanyHolding,
+  Criteria
+} from '../../types/analysis';
+import type { Project, PriceData, ProjectWithLatestAnalysis } from '../../types/project';
 import './TokenDetail.css';
+
+// Local Analysis Status (for UI state)
+type AnalysisStatus = 'idle' | 'loading' | 'completed' | 'error';
 
 // Icons
 const ShareIcon = () => (
@@ -17,17 +29,10 @@ const ShareIcon = () => (
   </svg>
 );
 
-const RefreshIcon = () => (
+const BookIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <polyline points="23 4 23 10 17 10" />
-    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-  </svg>
-);
-
-const CompareIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-    <line x1="12" y1="3" x2="12" y2="21" />
+    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
   </svg>
 );
 
@@ -51,12 +56,6 @@ const SparkleIcon = () => (
   </svg>
 );
 
-const HistoryIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <circle cx="12" cy="12" r="10" />
-    <polyline points="12 6 12 12 16 14" />
-  </svg>
-);
 
 const DownloadIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -73,13 +72,6 @@ const BuildingIcon = () => (
   </svg>
 );
 
-const GlobeIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <circle cx="12" cy="12" r="10" />
-    <line x1="2" y1="12" x2="22" y2="12" />
-    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-  </svg>
-);
 
 // Format helpers
 const formatNumber = (num: number): string => {
@@ -95,103 +87,140 @@ const formatSupply = (num: number): string => {
   return num.toLocaleString();
 };
 
-const getHoldingTypeIcon = (type: InstitutionalHolding['type']) => {
-  switch (type) {
-    case 'country':
-      return <GlobeIcon />;
-    default:
-      return <BuildingIcon />;
-  }
-};
-
-const getHoldingTypeLabel = (type: InstitutionalHolding['type']) => {
-  switch (type) {
-    case 'company':
-      return 'Company';
-    case 'country':
-      return 'Government';
-    case 'etf':
-      return 'ETF';
-    case 'fund':
-      return 'Fund';
-    default:
-      return type;
-  }
+const getHoldingTypeIcon = () => {
+  return <BuildingIcon />;
 };
 
 export const TokenDetail: React.FC = () => {
-  const { ticker } = useParams<{ ticker: string }>();
+  const { coingeckoId } = useParams<{ coingeckoId: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { showError, showSuccess } = useToast();
   
-  const [tokenData, setTokenData] = useState<TokenDetailType | null>(null);
-  const [analysis, setAnalysis] = useState<TokenAnalysis | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
+  const [priceData, setPriceData] = useState<PriceData | null>(null);
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('idle');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   
   // Slider state for Exchanges/Inflow card
   const [exchangeSlide, setExchangeSlide] = useState<'exchanges' | 'inflow'>('exchanges');
 
+  // AI Insight modal state
+  const [activeInsight, setActiveInsight] = useState<{
+    title: string;
+    text: string;
+  } | null>(null);
+
   useEffect(() => {
-    // Reset analysis state when ticker changes
+    // Reset analysis state when coingeckoId changes
     // This ensures every token page starts with blurred analysis sections
     setAnalysis(null);
     setAnalysisStatus('idle');
     
-    const fetchTokenData = async () => {
-      if (!ticker) return;
+    const fetchProjectData = async () => {
+      if (!coingeckoId) return;
       
       setIsLoading(true);
       setError(null);
       
       try {
-        // Only fetch basic token data (header info)
-        // Analysis data is NOT fetched automatically - user must click "Start Analysis"
-        const data = await getTokenDetail(ticker);
-        if (data) {
-          setTokenData(data);
-        } else {
-          setError('Token not found');
+        const projectIdFromQuery = searchParams.get('projectId');
+
+        // If coming from Projects page, fetch project + latest analysis via /projects/:id
+        if (projectIdFromQuery) {
+          const projectWithLatest: ProjectWithLatestAnalysis = await projectService.getProjectById(projectIdFromQuery);
+          setProject(projectWithLatest);
+
+          // If latest analysis exists, hydrate analysis and mark as completed so sections are unblurred
+          if (projectWithLatest.latestAnalysis?.resultData) {
+            setAnalysis(projectWithLatest.latestAnalysis);
+            setAnalysisStatus('completed');
+
+            // Price data isn't returned by /projects/:id; derive from analysis marketData if available
+            const market = projectWithLatest.latestAnalysis.resultData.coinData.marketData;
+            setPriceData({
+              currentPrice: market.currentPrice,
+              priceChange24h: market.priceChangePercentage24h,
+              totalVolume: market.totalVolume,
+              marketCap: market.marketCap,
+              fullyDilutedValuation: market.fullyDilutedValuation,
+              totalSupply: market.totalSupply,
+              maxSupply: (market.maxSupply ?? 0) as number,
+            });
+          } else {
+            // No latest analysis -> fall back to normal behavior (project info still shown, analysis stays blurred)
+            setAnalysis(null);
+            setAnalysisStatus('idle');
+          }
+          return;
         }
-      } catch {
-        setError('Failed to load token data');
+
+        // Default behavior: create or fetch project using coingeckoId
+        const response = await projectService.createProject({ coingeckoId });
+        setProject(response.project);
+        setPriceData(response.priceData || null);
+      } catch (err) {
+        console.error('Failed to fetch project:', err);
+        const errorMessage = getErrorMessage(err);
+        setError(errorMessage);
+        showError(errorMessage);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchTokenData();
-  }, [ticker]);
+    fetchProjectData();
+  }, [coingeckoId, searchParams, showError]);
 
   const handleStartAnalysis = async () => {
-    if (!ticker) return;
+    if (!project) return;
     
     setAnalysisStatus('loading');
     
     try {
-      const result = await startNewAnalysis(ticker);
+      const result = await analysisService.createAnalysis({ projectId: project.id });
       setAnalysis(result);
       setAnalysisStatus('completed');
-    } catch {
+      showSuccess('Analysis completed successfully!');
+    } catch (err) {
+      console.error('Failed to create analysis:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create analysis';
       setAnalysisStatus('error');
+      showError(errorMessage);
     }
   };
 
-  const handleViewPreviousAnalysis = async () => {
-    if (!tokenData?.previousAnalysisId) return;
-    
-    setAnalysisStatus('loading');
-    
+  const handleExportPdf = async () => {
+    if (!analysis?.id) {
+      showError('You need to run an analysis before exporting the PDF.');
+      return;
+    }
+
     try {
-      const result = await getTokenAnalysis(tokenData.previousAnalysisId);
-      if (result) {
-        setAnalysis(result);
-        setAnalysisStatus('completed');
-      }
-    } catch {
-      setAnalysisStatus('error');
+      setIsExportingPdf(true);
+      const pdfBlob = await analysisService.downloadAnalysisPdf(analysis.id);
+      const url = window.URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      const fileName = `${project?.slug || project?.name || 'analysis'}.pdf`;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      showSuccess('Analysis PDF downloaded successfully.');
+    } catch (err) {
+      console.error('Failed to download analysis PDF:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to download analysis PDF';
+      showError(errorMessage);
+    } finally {
+      setIsExportingPdf(false);
     }
   };
+
 
   if (isLoading) {
     return (
@@ -204,7 +233,7 @@ export const TokenDetail: React.FC = () => {
     );
   }
 
-  if (error || !tokenData) {
+  if (error || !project) {
     return (
       <MainLayout>
         <div className="token-detail__error">
@@ -216,26 +245,110 @@ export const TokenDetail: React.FC = () => {
     );
   }
 
-  const { header } = tokenData;
-  const isAnalyzed = analysisStatus === 'completed' && analysis;
+  const isAnalyzed = analysisStatus === 'completed' && analysis && analysis.resultData;
   const isAnalyzing = analysisStatus === 'loading';
+  
+  // Build header data from project and priceData
+  const header = {
+    id: project.id,
+    name: project.name,
+    ticker: project.symbol || 'N/A',
+    price: priceData?.currentPrice || 0,
+    priceChange24h: priceData?.priceChange24h || 0,
+    volume24h: priceData?.totalVolume || 0,
+    marketCap: priceData?.marketCap || 0,
+    fdv: priceData?.fullyDilutedValuation || 0,
+    currentSupply: priceData?.totalSupply || 0,
+    maxSupply: priceData?.maxSupply || null,
+  };
 
-  // Default mock data
-  const defaultHoldings: InstitutionalHolding[] = [
-    { name: 'Grayscale', type: 'fund', amount: 2800000, value: 8960000000, percentageOfSupply: 2.33 },
-    { name: 'United States', type: 'country', amount: 198000, value: 633600000, percentageOfSupply: 0.16 },
-    { name: 'BlackRock', type: 'etf', amount: 450000, value: 1440000000, percentageOfSupply: 0.37 },
-    { name: 'Fidelity', type: 'etf', amount: 380000, value: 1216000000, percentageOfSupply: 0.32 },
-    { name: 'MicroStrategy', type: 'company', amount: 150000, value: 480000000, percentageOfSupply: 0.12 },
-    { name: 'Germany', type: 'country', amount: 50000, value: 160000000, percentageOfSupply: 0.04 },
-  ];
+  // Helper functions to map API data to UI format
+  const getHolders = (): Holder[] => {
+    if (!isAnalyzed || !analysis?.resultData?.topHoldersData?.addressTopHolders) return [];
+    
+    // Get all holders from all chains
+    const allHolders: Holder[] = [];
+    const addressTopHolders = analysis.resultData.topHoldersData.addressTopHolders;
+    
+    // Iterate through all chains (ethereum, arbitrum_one, base, optimism, etc.)
+    Object.keys(addressTopHolders).forEach((chain) => {
+      const chainHolders = addressTopHolders[chain]?.holders || [];
+      allHolders.push(...chainHolders);
+    });
+    
+    // Sort by USD value (descending) and take top 100
+    return allHolders.sort((a, b) => b.usd - a.usd).slice(0, 100);
+  };
 
-  const defaultFlowData = [
-    { type: 'DEX Inf' as const, previous24h: 210000000, current: 85000000 },
-    { type: 'DEX Outf' as const, previous24h: -180000000, current: -120000000 },
-    { type: 'CEX Inf' as const, previous24h: 450000000, current: 620000000 },
-    { type: 'CEX Outf' as const, previous24h: -490000000, current: -310000000 },
-  ];
+  const getExchanges = (): Ticker[] => {
+    if (!isAnalyzed || !analysis?.resultData?.coinData?.tickers) return [];
+    // Sort by volume and take top exchanges
+    return analysis.resultData.coinData.tickers
+      .sort((a, b) => b.convertedVolume - a.convertedVolume)
+      .slice(0, 20);
+  };
+
+  const getInstitutionalHoldings = (): CompanyHolding[] => {
+    if (!isAnalyzed || !analysis?.resultData?.treasuryData?.companies) return [];
+    return analysis.resultData.treasuryData.companies
+      .filter(c => c.totalHoldings > 0)
+      .sort((a, b) => b.totalCurrentValueUsd - a.totalCurrentValueUsd);
+  };
+
+  const getFlowData = () => {
+    if (!isAnalyzed || !analysis?.resultData?.inflowOutflowData) return [];
+    const flow = analysis.resultData.inflowOutflowData;
+
+    // Some analyses may not include full inflow/outflow metrics
+    if (!flow.previous || !flow.current) {
+      return [];
+    }
+
+    return [
+      { type: 'DEX Inf' as const, previous24h: flow.previous.inflowDexVolume, current: flow.current.inflowDexVolume },
+      { type: 'DEX Outf' as const, previous24h: -flow.previous.outflowDexVolume, current: -flow.current.outflowDexVolume },
+      { type: 'CEX Inf' as const, previous24h: flow.previous.inflowCexVolume, current: flow.current.inflowCexVolume },
+      { type: 'CEX Outf' as const, previous24h: -flow.previous.outflowCexVolume, current: -flow.current.outflowCexVolume },
+    ];
+  };
+
+  const getCriteria = (): Criteria[] => {
+    if (!isAnalyzed || !analysis?.resultData?.detailedAnalysis?.data?.analysis?.criteria) return [];
+    return analysis.resultData.detailedAnalysis.data.analysis.criteria;
+  };
+
+  const getScoreRating = (score: number, maxScore: number): { label: string; className: string } => {
+    const percentage = (score / maxScore) * 100;
+    if (percentage >= 80) {
+      return { label: 'Good', className: 'rating-good' };
+    } else if (percentage >= 50) {
+      return { label: 'Moderate', className: 'rating-moderate' };
+    } else {
+      return { label: 'Poor', className: 'rating-poor' };
+    }
+  };
+
+  const getAIInsight = (category: string): string | undefined => {
+    if (!isAnalyzed || !analysis?.resultData?.aiInsights?.data?.insights) {
+      console.log('AI Insights check failed:', { 
+        isAnalyzed, 
+        hasInsights: !!analysis?.resultData?.aiInsights?.data?.insights,
+        hasData: !!analysis?.resultData?.aiInsights?.data,
+        analysisStatus,
+        hasResultData: !!analysis?.resultData
+      });
+      return undefined;
+    }
+    const insight = analysis.resultData.aiInsights.data.insights.find(i => i.category === category);
+    if (!insight) {
+      console.log('AI Insight not found for category:', category, 'Available categories:', analysis.resultData.aiInsights.data.insights.map(i => i.category));
+    }
+    return insight?.summary || undefined;
+  };
+
+  const getGeneralFinancialInsight = (): string | undefined => {
+    return getAIInsight('GeneralFinancialModule');
+  };
 
   return (
     <MainLayout>
@@ -244,6 +357,11 @@ export const TokenDetail: React.FC = () => {
         <header className="token-detail__header">
           <div className="token-detail__header-left">
             <div className="token-detail__title-row">
+              {project.imageUrl && (
+                <div className="token-detail__logo">
+                  <img src={project.imageUrl} alt={project.name} />
+                </div>
+              )}
               <h1 className="token-detail__name">
                 {header.name} <span className="token-detail__ticker">({header.ticker})</span>
               </h1>
@@ -252,17 +370,30 @@ export const TokenDetail: React.FC = () => {
               </span>
             </div>
             <div className="token-detail__price-row">
-              <span className="token-detail__price">${header.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="token-detail__price">${header.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 10 })}</span>
               <div className="token-detail__actions">
-                <button className="token-detail__action-btn" title="Share">
-                  <ShareIcon />
-                </button>
-                <button className="token-detail__action-btn" title="Refresh">
-                  <RefreshIcon />
-                </button>
-                <button className="token-detail__action-btn" title="Compare">
-                  <CompareIcon />
-                </button>
+                {project.websiteUrl && (
+                  <a 
+                    href={project.websiteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="token-detail__action-btn" 
+                    title="Visit Website"
+                  >
+                    <ShareIcon />
+                  </a>
+                )}
+                {project.whitepaperUrl && (
+                  <a 
+                    href={project.whitepaperUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="token-detail__action-btn" 
+                    title="View Whitepaper"
+                  >
+                    <BookIcon />
+                  </a>
+                )}
               </div>
             </div>
           </div>
@@ -290,6 +421,18 @@ export const TokenDetail: React.FC = () => {
           </div>
         </header>
 
+        {/* General Financial Insight - Show if analyzed */}
+        {isAnalyzed && getGeneralFinancialInsight() && (
+          <div className="token-detail__financial-insight">
+            <div className="token-detail__financial-insight-header">
+              <h3>General Financial Overview</h3>
+            </div>
+            <div className="token-detail__financial-insight-content">
+              <p>{getGeneralFinancialInsight()}</p>
+            </div>
+          </div>
+        )}
+
         {/* Analysis Action Section */}
         {!isAnalyzed && (
           <div className="token-detail__analysis-prompt">
@@ -306,23 +449,23 @@ export const TokenDetail: React.FC = () => {
                 >
                   {isAnalyzing ? 'Analyzing...' : 'Start Analysis'}
                 </Button>
-                {tokenData.hasAnalysis && (
-                  <Button 
-                    variant="outline" 
-                    size="lg" 
-                    onClick={handleViewPreviousAnalysis}
-                    leftIcon={<HistoryIcon />}
-                    disabled={isAnalyzing}
-                  >
-                    View Previous Analysis
-                  </Button>
-                )}
+                {/* TODO: Show "View Previous Analysis" button when previous analysis API is ready */}
+                {/* <Button 
+                  variant="outline" 
+                  size="lg" 
+                  onClick={handleViewPreviousAnalysis}
+                  leftIcon={<HistoryIcon />}
+                  disabled={isAnalyzing}
+                >
+                  View Previous Analysis
+                </Button> */}
               </div>
-              {tokenData.hasAnalysis && tokenData.previousAnalysisDate && (
+              {/* TODO: Show previous analysis date when available */}
+              {/* {previousAnalysisDate && (
                 <p className="token-detail__previous-date">
-                  Last analyzed: {new Date(tokenData.previousAnalysisDate).toLocaleDateString()}
+                  Last analyzed: {new Date(previousAnalysisDate).toLocaleDateString()}
                 </p>
-              )}
+              )} */}
             </div>
           </div>
         )}
@@ -341,26 +484,54 @@ export const TokenDetail: React.FC = () => {
                   <span>Amount Value ($)</span>
                 </div>
                 <div className="token-detail__holders-list">
-                  {(isAnalyzed ? analysis.topHolders : [
-                    { address: '0x742d...44e', label: 'Binance 7', amount: 1240000, value: 3900000000 },
-                    { address: '0x3f5c...92a', label: 'Kraken 4', amount: 850200, value: 2700000000 },
-                    { address: '0xd90e...12b', label: 'Cold Wallet', amount: 430000, value: 1300000000 },
-                    { address: '0x55d3...6a1', label: 'Whale', amount: 125000, value: 400000000 },
-                  ]).map((holder, i) => (
-                    <div key={i} className="token-detail__holder-row">
-                      <span className="token-detail__holder-address">
-                        {holder.address} <span className="token-detail__holder-label">({holder.label})</span>
-                      </span>
-                      <span className="token-detail__holder-amount">{holder.amount.toLocaleString()}</span>
-                      <span className="token-detail__holder-value">{formatNumber(holder.value)}</span>
-                    </div>
-                  ))}
+                  {getHolders().map((holder, i) => {
+                    const addressLabel = holder.address.label?.name || '';
+                    const entityName = holder.address.entity?.name || '';
+                    const displayLabel = addressLabel || entityName || 'Unknown';
+                    const shortAddress = `${holder.address.address.slice(0, 6)}...${holder.address.address.slice(-4)}`;
+                    
+                    return (
+                      <div key={i} className="token-detail__holder-row">
+                        <span className="token-detail__holder-address">
+                          {shortAddress} <span className="token-detail__holder-label">({displayLabel})</span>
+                        </span>
+                        <span className="token-detail__holder-amount">{holder.balance.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                        <span className="token-detail__holder-value">{formatNumber(holder.usd)}</span>
+                      </div>
+                    );
+                  })}
+                  {!isAnalyzed && (
+                    <>
+                      <div className="token-detail__holder-row">
+                        <span className="token-detail__holder-address">
+                          <span className="token-detail__holder-label">(Loading...)</span>
+                        </span>
+                        <span className="token-detail__holder-amount">-</span>
+                        <span className="token-detail__holder-value">-</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
-              {isAnalyzed && analysis.aiInsights.find(i => i.section === 'Top 100 Holders') && (
-                <div className="token-detail__ai-insight">
-                  <span className="token-detail__ai-label">AI INSIGHT</span>
-                  <p>{analysis.aiInsights.find(i => i.section === 'Top 100 Holders')?.content}</p>
+              {isAnalyzed && getAIInsight('TopHoldersModule') && (
+                <div className="token-detail__ai-preview">
+                  <div className="token-detail__ai-preview-pill" />
+                  <div className="token-detail__ai-preview-content">
+                    <span className="token-detail__ai-preview-label">AI INSIGHT</span>
+                    <p className="token-detail__ai-preview-text">
+                      {getAIInsight('TopHoldersModule')}
+                    </p>
+                    <button
+                      type="button"
+                      className="token-detail__ai-preview-more"
+                      onClick={() =>
+                        setActiveInsight({
+                          title: 'Top Holders – AI Insight',
+                          text: getAIInsight('TopHoldersModule') || '',
+                        })
+                      }
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -392,18 +563,36 @@ export const TokenDetail: React.FC = () => {
                 {/* Exchanges Slide */}
                 {exchangeSlide === 'exchanges' && (
                   <div className="token-detail__exchanges-list">
-                    {(isAnalyzed ? analysis.exchanges : [
-                      { name: 'Binance', volume: 4200000000, wtiScore: 9.8 },
-                      { name: 'Coinbase', volume: 2100000000, wtiScore: 9.2 },
-                      { name: 'OKX', volume: 1800000000, wtiScore: 8.5 },
-                      { name: 'Bybit', volume: 1400000000, wtiScore: 8.1 },
-                    ]).map((exchange, i) => (
+                    <div className="token-detail__exchange-header">
+                      <span className="token-detail__exchange-header-label">Exchange</span>
+                      <span className="token-detail__exchange-header-label">24h Volume (USD)</span>
+                      <span className="token-detail__exchange-header-label">WTI Score</span>
+                    </div>
+                    {getExchanges().map((ticker, i) => (
                       <div key={i} className="token-detail__exchange-row">
-                        <span className="token-detail__exchange-name">{exchange.name}</span>
-                        <span className="token-detail__exchange-volume">{formatNumber(exchange.volume)}</span>
-                        <span className="token-detail__exchange-wti">WTI: {exchange.wtiScore}</span>
+                        {ticker.tradeUrl ? (
+                          <a 
+                            href={ticker.tradeUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="token-detail__exchange-name token-detail__exchange-name--link"
+                          >
+                            {ticker.market.name}
+                          </a>
+                        ) : (
+                          <span className="token-detail__exchange-name">{ticker.market.name}</span>
+                        )}
+                        <span className="token-detail__exchange-volume">{formatNumber(ticker.convertedVolume)}</span>
+                        <span className="token-detail__exchange-wti">WTI: {ticker.wtiScore.toFixed(2)}</span>
                       </div>
                     ))}
+                    {!isAnalyzed && (
+                      <div className="token-detail__exchange-row">
+                        <span className="token-detail__exchange-name">-</span>
+                        <span className="token-detail__exchange-volume">-</span>
+                        <span className="token-detail__exchange-wti">-</span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -412,7 +601,7 @@ export const TokenDetail: React.FC = () => {
                   <div className="token-detail__flow-grid">
                     <div className="token-detail__flow-column">
                       <span className="token-detail__flow-label">PREVIOUS (24H)</span>
-                      {(isAnalyzed ? analysis.flowData : defaultFlowData).map((flow, i) => (
+                      {getFlowData().map((flow, i) => (
                         <div key={i} className="token-detail__flow-row">
                           <span>{flow.type}</span>
                           <span className={flow.previous24h >= 0 ? 'positive' : 'negative'}>
@@ -423,7 +612,7 @@ export const TokenDetail: React.FC = () => {
                     </div>
                     <div className="token-detail__flow-column">
                       <span className="token-detail__flow-label">TODAY (CURRENT)</span>
-                      {(isAnalyzed ? analysis.flowData : defaultFlowData).map((flow, i) => (
+                      {getFlowData().map((flow, i) => (
                         <div key={i} className="token-detail__flow-row">
                           <span>{flow.type}</span>
                           <span className={flow.current >= 0 ? 'positive' : 'negative'}>
@@ -435,37 +624,35 @@ export const TokenDetail: React.FC = () => {
                   </div>
                 )}
               </div>
-              
-              {/* Slide Indicators */}
-              <div className="token-detail__slide-indicators">
-                <button 
-                  className={`token-detail__slide-dot ${exchangeSlide === 'exchanges' ? 'active' : ''}`}
-                  onClick={() => setExchangeSlide('exchanges')}
-                  aria-label="View Exchanges"
-                />
-                <button 
-                  className={`token-detail__slide-dot ${exchangeSlide === 'inflow' ? 'active' : ''}`}
-                  onClick={() => setExchangeSlide('inflow')}
-                  aria-label="View Inflow & Outflow"
-                />
-              </div>
-              
-              {/* AI Insight - Always at bottom */}
-              <div className="token-detail__ai-insight">
-                <span className="token-detail__ai-label">AI INSIGHT</span>
-                <p>
-                  {isAnalyzed 
-                    ? (exchangeSlide === 'exchanges' 
-                        ? analysis.aiInsights.find(i => i.section === 'Exchanges')?.content
-                        : analysis.aiInsights.find(i => i.section === 'Inflow & Outflow')?.content
-                      )
-                    : (exchangeSlide === 'exchanges'
-                        ? 'Liquidity profile analysis will be available after running the analysis.'
-                        : 'CEX/DEX flow analysis will be available after running the analysis.'
-                      )
-                  }
-                </p>
-              </div>
+              {isAnalyzed && (getAIInsight('ExchangesTickersModule') || getAIInsight('InflowOutflowModule')) && (
+                <div className="token-detail__ai-preview">
+                  <div className="token-detail__ai-preview-pill" />
+                  <div className="token-detail__ai-preview-content">
+                    <span className="token-detail__ai-preview-label">AI INSIGHT</span>
+                    <p className="token-detail__ai-preview-text">
+                      {exchangeSlide === 'exchanges'
+                        ? getAIInsight('ExchangesTickersModule')
+                        : getAIInsight('InflowOutflowModule')}
+                    </p>
+                    <button
+                      type="button"
+                      className="token-detail__ai-preview-more"
+                      onClick={() =>
+                        setActiveInsight({
+                          title:
+                            exchangeSlide === 'exchanges'
+                              ? 'Exchanges – AI Insight'
+                              : 'Inflow & Outflow – AI Insight',
+                          text:
+                            (exchangeSlide === 'exchanges'
+                              ? getAIInsight('ExchangesTickersModule')
+                              : getAIInsight('InflowOutflowModule')) || '',
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -476,46 +663,68 @@ export const TokenDetail: React.FC = () => {
                 <h3>Detailed Report</h3>
                 <p className="token-detail__report-subtitle">Deep-dive technical & fundamental audit</p>
               </div>
-              <Button variant="primary" size="sm" leftIcon={<DownloadIcon />}>
-                Export as PDF
+              <Button 
+                variant="primary" 
+                size="sm" 
+                leftIcon={<DownloadIcon />}
+                onClick={handleExportPdf}
+                disabled={!isAnalyzed || isExportingPdf}
+              >
+                {isExportingPdf ? 'Exporting...' : 'Export as PDF'}
               </Button>
             </div>
             <div className="token-detail__card-body">
               <div className="token-detail__card-scrollable token-detail__card-scrollable--tall">
                 <h4 className="token-detail__criteria-title">7 CRITERIA RISK ASSESSMENT</h4>
                 <div className="token-detail__criteria-list">
-                  {(isAnalyzed ? analysis.criteriaAssessments : [
-                    { id: 1, title: 'Originality & Innovation', description: 'Assessment pending analysis...' },
-                    { id: 2, title: 'Market Potential & Competitive Landscape', description: 'Assessment pending analysis...' },
-                    { id: 3, title: 'Tokenomics & Sustainability', description: 'Assessment pending analysis...' },
-                    { id: 4, title: 'Security & Compliance', description: 'Assessment pending analysis...' },
-                    { id: 5, title: 'Community & Ecosystem Growth', description: 'Assessment pending analysis...' },
-                    { id: 6, title: 'Adoption Metrics', description: 'Assessment pending analysis...' },
-                    { id: 7, title: 'Risk Assessment', description: 'Assessment pending analysis...' },
-                  ]).map((criteria) => (
+                  {getCriteria().map((criteria) => (
                     <div key={criteria.id} className="token-detail__criteria-item">
                       <span className="token-detail__criteria-number">{criteria.id}</span>
                       <div className="token-detail__criteria-content">
-                        <h5>{criteria.title}</h5>
-                        <p>{criteria.description}</p>
-                        {criteria.highlightText && (
-                          <p className="token-detail__criteria-highlight">{criteria.highlightText}</p>
+                        <div className="token-detail__criteria-header">
+                          <h5>{criteria.name}</h5>
+                          {(() => {
+                            const rating = getScoreRating(criteria.score, criteria.maxScore);
+                            return (
+                              <span className={`token-detail__criteria-rating ${rating.className}`}>
+                                {rating.label}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                        <p>{criteria.analysis}</p>
+                        {criteria.strengths && criteria.strengths.length > 0 && (
+                          <div className="token-detail__criteria-strengths">
+                            <strong>Strengths:</strong>
+                            <ul>
+                              {criteria.strengths.map((strength, i) => (
+                                <li key={i}>{strength}</li>
+                              ))}
+                            </ul>
+                          </div>
                         )}
-                        {criteria.stats && (
-                          <div className="token-detail__criteria-stats">
-                            {criteria.stats.map((stat, i) => (
-                              <div key={i} className="token-detail__criteria-stat">
-                                <span className="token-detail__criteria-stat-label">{stat.label}</span>
-                                <span className={`token-detail__criteria-stat-value ${stat.change ? 'has-change' : ''}`}>
-                                  {stat.value} {stat.change && <span>({stat.change})</span>}
-                                </span>
-                              </div>
-                            ))}
+                        {criteria.weaknesses && criteria.weaknesses.length > 0 && (
+                          <div className="token-detail__criteria-weaknesses">
+                            <strong>Weaknesses:</strong>
+                            <ul>
+                              {criteria.weaknesses.map((weakness, i) => (
+                                <li key={i}>{weakness}</li>
+                              ))}
+                            </ul>
                           </div>
                         )}
                       </div>
                     </div>
                   ))}
+                  {!isAnalyzed && (
+                    <div className="token-detail__criteria-item">
+                      <span className="token-detail__criteria-number">-</span>
+                      <div className="token-detail__criteria-content">
+                        <h5>Analysis pending...</h5>
+                        <p>Detailed criteria assessment will be available after running the analysis.</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -528,30 +737,65 @@ export const TokenDetail: React.FC = () => {
             </div>
             <div className="token-detail__card-body">
               <div className="token-detail__card-scrollable">
+                <div className="token-detail__holdings-header">
+                  <span className="token-detail__holdings-header-label">Company/Country</span>
+                  <span className="token-detail__holdings-header-label">Value</span>
+                  
+                </div>
                 <div className="token-detail__holdings-list">
-                  {(isAnalyzed ? analysis.institutionalHoldings : defaultHoldings).map((holding, i) => (
+                  {getInstitutionalHoldings().map((holding, i) => (
                     <div key={i} className="token-detail__holding-row">
                       <div className="token-detail__holding-info">
                         <span className="token-detail__holding-icon">
-                          {getHoldingTypeIcon(holding.type)}
+                          {getHoldingTypeIcon()}
                         </span>
                         <div className="token-detail__holding-details">
                           <span className="token-detail__holding-name">{holding.name}</span>
-                          <span className="token-detail__holding-type">{getHoldingTypeLabel(holding.type)}</span>
+                          <span className="token-detail__holding-type">{holding.country}</span>
                         </div>
                       </div>
                       <div className="token-detail__holding-stats">
-                        <span className="token-detail__holding-value">{formatNumber(holding.value)}</span>
-                        <span className="token-detail__holding-percent">{holding.percentageOfSupply.toFixed(2)}%</span>
+                        <span className="token-detail__holding-value">{formatNumber(holding.totalCurrentValueUsd)}</span>
+                        <span className="token-detail__holding-percent">{holding.percentageOfTotalSupply.toFixed(3)}%</span>
                       </div>
                     </div>
                   ))}
+                  {!isAnalyzed && (
+                    <div className="token-detail__holding-row">
+                      <div className="token-detail__holding-info">
+                        <span className="token-detail__holding-icon">-</span>
+                        <div className="token-detail__holding-details">
+                          <span className="token-detail__holding-name">Loading...</span>
+                          <span className="token-detail__holding-type">-</span>
+                        </div>
+                      </div>
+                      <div className="token-detail__holding-stats">
+                        <span className="token-detail__holding-value">-</span>
+                        <span className="token-detail__holding-percent">-</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-              {isAnalyzed && analysis.aiInsights.find(i => i.section === 'Institutional Holdings') && (
-                <div className="token-detail__ai-insight">
-                  <span className="token-detail__ai-label">AI INSIGHT</span>
-                  <p>{analysis.aiInsights.find(i => i.section === 'Institutional Holdings')?.content}</p>
+              {isAnalyzed && getAIInsight('InstitutionalHoldingsModule') && (
+                <div className="token-detail__ai-preview">
+                  <div className="token-detail__ai-preview-pill" />
+                  <div className="token-detail__ai-preview-content">
+                    <span className="token-detail__ai-preview-label">AI INSIGHT</span>
+                    <p className="token-detail__ai-preview-text">
+                      {getAIInsight('InstitutionalHoldingsModule')}
+                    </p>
+                    <button
+                      type="button"
+                      className="token-detail__ai-preview-more"
+                      onClick={() =>
+                        setActiveInsight({
+                          title: 'Institutional Holdings – AI Insight',
+                          text: getAIInsight('InstitutionalHoldingsModule') || '',
+                        })
+                      }
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -565,41 +809,132 @@ export const TokenDetail: React.FC = () => {
             <div className="token-detail__card-body">
               <div className="token-detail__card-scrollable">
                 <div className="token-detail__social-section">
-                  <span className="token-detail__social-label">SOCIAL SENTIMENT</span>
-                  <div className="token-detail__sentiment-bar">
-                    <div 
-                      className={`token-detail__sentiment-fill ${isAnalyzed ? analysis.socialData.sentimentType.toLowerCase() : 'neutral'}`}
-                      style={{ width: `${isAnalyzed ? analysis.socialData.sentimentPercentage : 50}%` }}
-                    />
-                  </div>
-                  <span className="token-detail__sentiment-text">
-                    {isAnalyzed ? `${analysis.socialData.sentimentType} (${analysis.socialData.sentimentPercentage}%)` : 'NEUTRAL (50%)'}
-                  </span>
+                  <span className="token-detail__social-label">COMMUNITY METRICS</span>
+                  {isAnalyzed && analysis?.resultData?.coinData?.communityData && (
+                    <div className="token-detail__social-stats">
+                      <div className="token-detail__social-stat">
+                        <span className="token-detail__social-stat-label">Reddit Subscribers</span>
+                        <span className="token-detail__social-stat-value">
+                          {analysis.resultData.coinData.communityData.redditSubscribers?.toLocaleString() || 'N/A'}
+                        </span>
+                      </div>
+                      <div className="token-detail__social-stat">
+                        <span className="token-detail__social-stat-label">Telegram Users</span>
+                        <span className="token-detail__social-stat-value">
+                          {analysis.resultData.coinData.communityData.telegramChannelUserCount?.toLocaleString() || 'N/A'}
+                        </span>
+                      </div>
+                      <div className="token-detail__social-stat">
+                        <span className="token-detail__social-stat-label">Reddit Posts (48h)</span>
+                        <span className="token-detail__social-stat-value">
+                          {analysis.resultData.coinData.communityData.redditAveragePosts48h?.toLocaleString() || 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  {!isAnalyzed && (
+                    <div className="token-detail__social-stats">
+                      <div className="token-detail__social-stat">
+                        <span className="token-detail__social-stat-label">-</span>
+                        <span className="token-detail__social-stat-value">-</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="token-detail__developer-section">
                   <span className="token-detail__social-label">DEVELOPER ACTIVITY</span>
-                  <div className="token-detail__commits-chart">
-                    <div className="token-detail__commits-bars">
-                      {[40, 60, 80, 55, 90, 70, 85].map((h, i) => (
-                        <div key={i} className="token-detail__commits-bar" style={{ height: `${h}%` }} />
-                      ))}
+                  {isAnalyzed && analysis?.resultData?.coinData?.developerData && (
+                    <div className="token-detail__developer-stats">
+                      <div className="token-detail__developer-stat">
+                        <span className="token-detail__developer-stat-label">GitHub Stars</span>
+                        <span className="token-detail__developer-stat-value">
+                          {analysis.resultData.coinData.developerData.stars?.toLocaleString() || 'N/A'}
+                        </span>
+                      </div>
+                      <div className="token-detail__developer-stat">
+                        <span className="token-detail__developer-stat-label">Forks</span>
+                        <span className="token-detail__developer-stat-value">
+                          {analysis.resultData.coinData.developerData.forks?.toLocaleString() || 'N/A'}
+                        </span>
+                      </div>
+                      <div className="token-detail__developer-stat">
+                        <span className="token-detail__developer-stat-label">Contributors</span>
+                        <span className="token-detail__developer-stat-value">
+                          {analysis.resultData.coinData.developerData.pullRequestContributors?.toLocaleString() || 'N/A'}
+                        </span>
+                      </div>
+                      <div className="token-detail__developer-stat">
+                        <span className="token-detail__developer-stat-label">Commits (4 weeks)</span>
+                        <span className="token-detail__developer-stat-value">
+                          {analysis.resultData.coinData.developerData.commitCount4Weeks?.toLocaleString() || 'N/A'}
+                        </span>
+                      </div>
+                      <div className="token-detail__developer-stat">
+                        <span className="token-detail__developer-stat-label">Code Changes (4 weeks)</span>
+                        <span className="token-detail__developer-stat-value">
+                          +{analysis.resultData.coinData.developerData.codeAdditionsDeletions4Weeks?.additions?.toLocaleString() || '0'} / 
+                          -{Math.abs(analysis.resultData.coinData.developerData.codeAdditionsDeletions4Weeks?.deletions || 0).toLocaleString()}
+                        </span>
+                      </div>
                     </div>
-                    <span className="token-detail__commits-change positive">
-                      +{isAnalyzed ? analysis.socialData.weeklyCommitsChange : 12.4}%
-                    </span>
-                    <span className="token-detail__commits-label">Weekly Commits</span>
-                  </div>
+                  )}
+                  {!isAnalyzed && (
+                    <div className="token-detail__developer-stats">
+                      <div className="token-detail__developer-stat">
+                        <span className="token-detail__developer-stat-label">-</span>
+                        <span className="token-detail__developer-stat-value">-</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-              {isAnalyzed && analysis.aiInsights.find(i => i.section === 'Social & Developer Data') && (
-                <div className="token-detail__ai-insight">
-                  <span className="token-detail__ai-label">AI INSIGHT</span>
-                  <p>{analysis.aiInsights.find(i => i.section === 'Social & Developer Data')?.content}</p>
+              {isAnalyzed && getAIInsight('SocialAndDeveloperModule') && (
+                <div className="token-detail__ai-preview">
+                  <div className="token-detail__ai-preview-pill" />
+                  <div className="token-detail__ai-preview-content">
+                    <span className="token-detail__ai-preview-label">AI INSIGHT</span>
+                    <p className="token-detail__ai-preview-text">
+                      {getAIInsight('SocialAndDeveloperModule')}
+                    </p>
+                    <button
+                      type="button"
+                      className="token-detail__ai-preview-more"
+                      onClick={() =>
+                        setActiveInsight({
+                          title: 'Social & Developer – AI Insight',
+                          text: getAIInsight('SocialAndDeveloperModule') || '',
+                        })
+                      }
+                    />
+                  </div>
                 </div>
               )}
             </div>
           </div>
         </div>
+
+        {/* AI Insight Modal */}
+        {activeInsight && (
+          <div
+            className="token-detail__ai-modal-backdrop"
+            onClick={() => setActiveInsight(null)}
+          >
+            <div
+              className="token-detail__ai-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h4 className="token-detail__ai-modal-title">{activeInsight.title}</h4>
+              <div className="token-detail__ai-modal-content">
+                {activeInsight.text}
+              </div>
+              <div className="token-detail__ai-modal-actions">
+                <Button size="sm" variant="secondary" onClick={() => setActiveInsight(null)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <footer className="token-detail__footer">

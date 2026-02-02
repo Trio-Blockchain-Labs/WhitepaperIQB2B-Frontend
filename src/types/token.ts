@@ -57,10 +57,7 @@ export interface CriteriaAssessment {
   }[];
 }
 
-export interface AIInsight {
-  section: string;
-  content: string;
-}
+// AIInsight moved to analysis.ts
 
 export interface TokenAnalysis {
   id: string;
@@ -82,5 +79,5 @@ export interface TokenDetail {
   previousAnalysisDate?: string;
 }
 
-// Analysis Status
-export type AnalysisStatus = 'idle' | 'loading' | 'completed' | 'error';
+// Analysis Status (UI state - different from API AnalysisStatus)
+export type AnalysisUIStatus = 'idle' | 'loading' | 'completed' | 'error';
