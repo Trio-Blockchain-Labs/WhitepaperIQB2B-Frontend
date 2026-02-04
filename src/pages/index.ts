@@ -5,3 +5,5 @@ export { TokenDetail } from './TokenDetail';
 export { Settings } from './Settings';
 export { Projects } from './Projects';
 export { Invite } from './Invite';
+export { Trending } from './Trending/Trending';
+export { Analyses } from './Analyses/Analyses';

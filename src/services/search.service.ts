@@ -1,6 +1,6 @@
 import { api, getErrorMessage } from './api';
 import type { ApiResponse } from '../types';
-import type { SearchResponse } from '../types/search';
+import type { SearchResponse, TrendingResponse } from '../types/search';
 
 const SEARCH_BASE_URL = '/search';
 
@@ -31,6 +31,42 @@ export const searchService = {
       }
       
       throw new Error('Failed to fetch search results');
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  },
+
+  /**
+   * Get trending coins.
+   * Backend: GET /api/v1/search with EMPTY query returns trending:
+   * {
+   *   projects: [...],
+   *   pagination: { page, limit, total, totalPages }
+   * }
+   */
+  getTrending: async (page: number = 1, limit: number = 20): Promise<TrendingResponse> => {
+    try {
+      const response = await api.get<ApiResponse<TrendingResponse>>(SEARCH_BASE_URL, {
+        params: {
+          page,
+          limit,
+        },
+      });
+
+      if (response.data.success && response.data.data) {
+        const data = response.data.data;
+        return {
+          projects: data.projects || [],
+          pagination: data.pagination || {
+            page,
+            limit,
+            total: data.projects?.length || 0,
+            totalPages: 1,
+          },
+        };
+      }
+
+      throw new Error('Failed to fetch trending coins');
     } catch (error) {
       throw new Error(getErrorMessage(error));
     }

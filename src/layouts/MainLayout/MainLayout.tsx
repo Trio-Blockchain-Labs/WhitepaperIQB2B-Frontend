@@ -29,10 +29,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     setIsSidebarOpen(false);
   };
 
-  // Show the logo next to hamburger on token detail, projects, and settings pages
-  const showTopbarLogo = location.pathname.startsWith('/token/') || 
-                         location.pathname === '/projects' || 
-                         location.pathname === '/settings';
+  // Show the logo next to hamburger on token detail, projects, settings, trending and analyses pages
+  const showTopbarLogo =
+    location.pathname.startsWith('/token/') ||
+    location.pathname === '/projects' ||
+    location.pathname === '/settings' ||
+    location.pathname === '/trending' ||
+    location.pathname === '/analyses';
 
   const handleLogoClick = () => {
     navigate('/search');

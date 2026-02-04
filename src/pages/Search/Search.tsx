@@ -1,11 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../layouts';
-import { trendingCoins, categories, recentAnalyses } from '../../mock';
-import { getCategoryIcon } from '../../components/icons';
 import { Logo } from '../../components/Logo';
-import { searchService } from '../../services';
-import type { SearchResult, Coin } from '../../types';
+import { searchService, analysisService } from '../../services';
+import type { SearchResult } from '../../types';
+import type { TrendingCoin } from '../../types/search';
+import type { AnalysisListItem } from '../../types/analysis';
 import './Search.css';
 
 const SearchIcon = () => (
@@ -31,20 +31,30 @@ const AnalysisIcon = () => (
   </svg>
 );
 
+const normalizeRiskLevel = (risk?: string | null): 'low' | 'medium' | 'high' | 'unknown' => {
+  if (!risk) return 'unknown';
+  const value = risk.toLowerCase();
+  if (value.includes('high')) return 'high';
+  if (value.includes('medium') || value.includes('moderate')) return 'medium';
+  if (value.includes('low')) return 'low';
+  return 'unknown';
+};
+
 export const Search: React.FC = () => {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [trending, setTrending] = useState<TrendingCoin[]>([]);
+  const [isTrendingLoading, setIsTrendingLoading] = useState(false);
+  const [recentAnalysesApi, setRecentAnalysesApi] = useState<AnalysisListItem[]>([]);
+  const [isRecentLoading, setIsRecentLoading] = useState(false);
 
   const handleSearch = useCallback(async (searchQuery: string) => {
     setQuery(searchQuery);
     
-    const trimmed = searchQuery.trim();
-
-    // Require at least 2 characters before hitting the search endpoint
-    if (trimmed.length < 2) {
+    if (!searchQuery.trim()) {
       setResults([]);
       setShowDropdown(false);
       return;
@@ -54,7 +64,7 @@ export const Search: React.FC = () => {
     setShowDropdown(true);
     
     try {
-      const searchResponse = await searchService.search(trimmed, 7); // Limit to 7 for autocomplete
+      const searchResponse = await searchService.search(searchQuery.trim(), 7); // Limit to 7 for autocomplete
       setResults(searchResponse.projects || []);
     } catch (error) {
       console.error('Search failed:', error);
@@ -62,6 +72,44 @@ export const Search: React.FC = () => {
     } finally {
       setIsSearching(false);
     }
+  }, []);
+
+  // Load trending coins (first 4) on mount
+  useEffect(() => {
+    const loadTrending = async () => {
+      try {
+        setIsTrendingLoading(true);
+        const trendingResponse = await searchService.getTrending(1, 4);
+        setTrending(trendingResponse.projects || []);
+      } catch (error) {
+        console.error('Failed to load trending coins:', error);
+        setTrending([]);
+      } finally {
+        setIsTrendingLoading(false);
+      }
+    };
+
+    loadTrending();
+  }, []);
+
+  // Load recent analyses (latest 5, skipping FAILED if possible)
+  useEffect(() => {
+    const loadRecentAnalyses = async () => {
+      try {
+        setIsRecentLoading(true);
+        // Fetch a bit more to compensate for FAILED ones
+        const response = await analysisService.listAnalyses({ page: 1, limit: 10 });
+        const nonFailed = (response.data || []).filter(a => a.status == 'COMPLETED');
+        setRecentAnalysesApi(nonFailed.slice(0, 5));
+      } catch (error) {
+        console.error('Failed to load recent analyses:', error);
+        setRecentAnalysesApi([]);
+      } finally {
+        setIsRecentLoading(false);
+      }
+    };
+
+    loadRecentAnalyses();
   }, []);
 
   // Handle form submit (Enter key or search button) - immediate navigation
@@ -83,16 +131,25 @@ export const Search: React.FC = () => {
     navigate(`/token/${result.id}`);
   };
 
-  const handleTrendingClick = (coin: Coin) => {
-    navigate(`/token/${coin.ticker}`);
+  const handleTrendingClick = (coin: TrendingCoin) => {
+    navigate(`/token/${coin.id}`);
   };
 
-  const handleCategoryClick = (categoryId: string) => {
-    navigate(`/search/results?category=${categoryId}`);
+  const handleTrendingViewAll = () => {
+    navigate('/trending');
   };
 
-  const handleRecentClick = (ticker: string) => {
-    navigate(`/token/${ticker}`);
+  const handleRecentClick = (analysis: AnalysisListItem) => {
+    const project = analysis.project;
+    if (project.coingeckoId) {
+      navigate(`/token/${project.coingeckoId}?projectId=${encodeURIComponent(project.id)}`);
+    } else {
+      navigate(`/token/${project.slug || project.id}?projectId=${encodeURIComponent(project.id)}`);
+    }
+  };
+
+  const handleViewAllAnalyses = () => {
+    navigate('/analyses');
   };
 
   const handleInputBlur = () => {
@@ -195,42 +252,30 @@ export const Search: React.FC = () => {
 
           {/* Trending Section */}
           <div className="search__trending">
-            <div className="search__section-header">
+            <button
+              type="button"
+              className="search__section-header search__section-header--clickable"
+              onClick={handleTrendingViewAll}
+            >
               <TrendingIcon />
               <span>Trending Now</span>
-            </div>
+            </button>
             <div className="search__trending-list">
-              {trendingCoins.map((coin) => (
-                <button
-                  key={coin.id}
-                  className="search__trending-item"
-                  onClick={() => handleTrendingClick(coin)}
-                >
-                  <span className="search__trending-name">{coin.name}</span>
-                  <span className="search__trending-ticker">${coin.ticker}</span>
-                </button>
-              ))}
+              {isTrendingLoading ? (
+                <div className="search__loading">Loading trending...</div>
+              ) : (
+                trending.map((coin) => (
+                  <button
+                    key={coin.id}
+                    className="search__trending-item"
+                    onClick={() => handleTrendingClick(coin)}
+                  >
+                    <span className="search__trending-name">{coin.name}</span>
+                    <span className="search__trending-ticker">${coin.symbol}</span>
+                  </button>
+                ))
+              )}
             </div>
-          </div>
-        </div>
-
-        {/* Categories Section */}
-        <div className="search__categories">
-          <h3 className="search__section-title">Browse by Category</h3>
-          <div className="search__categories-grid">
-            {categories.map((category) => (
-              <button
-                key={category.id}
-                className="search__category-card"
-                onClick={() => handleCategoryClick(category.id)}
-              >
-                <span className="search__category-icon">
-                  {getCategoryIcon(category.iconType, 28)}
-                </span>
-                <span className="search__category-name">{category.name}</span>
-                <span className="search__category-count">{category.count} projects</span>
-              </button>
-            ))}
           </div>
         </div>
 
@@ -238,26 +283,67 @@ export const Search: React.FC = () => {
         <div className="search__recent">
           <h3 className="search__section-title">Recent Analyses</h3>
           <div className="search__recent-list">
-            {recentAnalyses.map((analysis) => (
-              <button 
-                key={analysis.id} 
-                className="search__recent-item"
-                onClick={() => handleRecentClick(analysis.ticker)}
-              >
-                <div className="search__recent-icon">
-                  <AnalysisIcon />
+            {isRecentLoading ? (
+              <div className="search__loading">
+                <span className="search__loading-spinner" />
+                Loading recent analyses...
+              </div>
+            ) : recentAnalysesApi.length === 0 ? (
+              <p className="search__no-results">No recent analyses found.</p>
+            ) : (
+              <>
+                {recentAnalysesApi
+                  .filter((analysis) => analysis.status !== 'FAILED')
+                  .map((analysis) => (
+                  <button 
+                    key={analysis.id} 
+                    className="search__recent-item"
+                    onClick={() => handleRecentClick(analysis)}
+                  >
+                    <div className="search__recent-icon">
+                      {analysis.project.imageUrl ? (
+                        <img src={analysis.project.imageUrl} alt={analysis.project.name} />
+                      ) : (
+                        <AnalysisIcon />
+                      )}
+                    </div>
+                    <div className="search__recent-info">
+                      <span className="search__recent-name">
+                        {analysis.project.name}{' '}
+                        <span className="search__recent-ticker">
+                          {analysis.project.symbol ? `(${analysis.project.symbol.toUpperCase()})` : ''}
+                        </span>
+                      </span>
+                      <span className="search__recent-date">
+                        {new Date(analysis.createdAt).toLocaleString()}
+                      </span>
+                      <span className="search__recent-user">
+                        Analyzed by {analysis.user.fullName || analysis.user.email}
+                      </span>
+                    </div>
+                    {analysis.riskLevel && (
+                      <div
+                        className={`search__recent-score search__recent-score--${normalizeRiskLevel(
+                          analysis.riskLevel,
+                        )}`}
+                      >
+                        <span className="search__recent-score-label">Risk Level</span>
+                        <span className="search__recent-score-value">{analysis.riskLevel}</span>
+                      </div>
+                    )}
+                  </button>
+                ))}
+                <div className="search__recent-footer">
+                  <button 
+                    type="button" 
+                    className="search__view-all"
+                    onClick={handleViewAllAnalyses}
+                  >
+                    View all analyses →
+                  </button>
                 </div>
-                <div className="search__recent-info">
-                  <span className="search__recent-name">
-                    {analysis.coinName} <span className="search__recent-ticker">${analysis.ticker}</span>
-                  </span>
-                  <span className="search__recent-date">{analysis.date}</span>
-                </div>
-                <div className="search__recent-score" data-score={analysis.score >= 80 ? 'high' : analysis.score >= 60 ? 'medium' : 'low'}>
-                  {analysis.score}
-                </div>
-              </button>
-            ))}
+              </>
+            )}
           </div>
         </div>
       </div>

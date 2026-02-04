@@ -56,7 +56,6 @@ const SparkleIcon = () => (
   </svg>
 );
 
-
 const DownloadIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -69,6 +68,49 @@ const BuildingIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
     <path d="M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01" />
+  </svg>
+);
+
+// Module icons - minimal, consistent style
+const HoldersIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <circle cx="8" cy="8" r="2.6" />
+    <circle cx="16" cy="8" r="2.6" />
+    <path d="M4 18.5c0-2.7 1.9-4.5 4-4.5s4 1.8 4 4.5" />
+    <path d="M12 18.5c0-2.7 1.9-4.5 4-4.5s4 1.8 4 4.5" />
+  </svg>
+);
+
+const ExchangesIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <path d="M5 7h10l-2.5-2.5M15 17H9l2.5 2.5" />
+    <path d="M5 11h14M5 13h14" opacity="0.7" />
+  </svg>
+);
+
+const TreasuryIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <path d="M12 3 5 6v6c0 3.5 3 6.4 7 7 4-0.6 7-3.5 7-7V6l-7-3z" />
+    <circle cx="12" cy="11" r="2.2" />
+  </svg>
+);
+
+const SocialIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <circle cx="7" cy="8" r="2.4" />
+    <circle cx="17" cy="7" r="2.4" />
+    <circle cx="15" cy="17" r="2.4" />
+    <path d="M8.5 9.3 13.5 15" />
+    <path d="M15 7.5 16 14.5" />
+  </svg>
+);
+
+const ReportIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <rect x="6" y="4" width="12" height="16" rx="2" />
+    <path d="M9 9h6" />
+    <path d="M9 12h4" />
+    <path d="M9 15h2" />
   </svg>
 );
 
@@ -94,6 +136,17 @@ const formatSupply = (num: number): string => {
   return num.toLocaleString();
 };
 
+const formatAnalysisDate = (isoDate: string): string => {
+  const date = new Date(isoDate);
+  return date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
 const getHoldingTypeIcon = () => {
   return <BuildingIcon />;
 };
@@ -114,6 +167,9 @@ export const TokenDetail: React.FC = () => {
   
   // Slider state for Exchanges/Inflow card
   const [exchangeSlide, setExchangeSlide] = useState<'exchanges' | 'inflow'>('exchanges');
+
+  // Tab state for summary vs financial overview
+  const [summaryTab, setSummaryTab] = useState<'summary' | 'financial'>('summary');
 
   // AI Insight modal state
   const [activeInsight, setActiveInsight] = useState<{
@@ -362,6 +418,13 @@ export const TokenDetail: React.FC = () => {
     return getAIInsight('GeneralFinancialModule');
   };
 
+  const getGeneralSummary = (): string | undefined => {
+    if (!isAnalyzed || !analysis?.resultData?.aiInsights?.data?.summary) {
+      return undefined;
+    }
+    return analysis.resultData.aiInsights.data.summary;
+  };
+
   // History functions
   const handleOpenHistory = async () => {
     if (!project?.id) return;
@@ -394,7 +457,7 @@ export const TokenDetail: React.FC = () => {
         const market = selectedAnalysis.resultData.coinData.marketData;
         setPriceData({
           currentPrice: market.currentPrice,
-          priceChange24h: market.priceChange24h,
+          priceChange24h: market.priceChangePercentage24h,
           totalVolume: market.totalVolume,
           marketCap: market.marketCap,
           fullyDilutedValuation: market.fullyDilutedValuation,
@@ -456,6 +519,16 @@ export const TokenDetail: React.FC = () => {
                     <BookIcon />
                   </a>
                 )}
+                {isAnalyzed && project?.id && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    leftIcon={<HistoryIcon />}
+                    onClick={handleOpenHistory}
+                  >
+                    View History
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -483,14 +556,56 @@ export const TokenDetail: React.FC = () => {
           </div>
         </header>
 
-        {/* General Financial Insight - Show if analyzed */}
-        {isAnalyzed && getGeneralFinancialInsight() && (
+        {/* AI Summary / General Financial Overview - Show if analyzed */}
+        {isAnalyzed && (getGeneralSummary() || getGeneralFinancialInsight()) && (
           <div className="token-detail__financial-insight">
             <div className="token-detail__financial-insight-header">
-              <h3>General Financial Overview</h3>
+              <h3>
+                {summaryTab === 'summary' && getGeneralSummary()
+                  ? 'Summary'
+                  : 'General Financial Overview'}
+              </h3>
+              <div className="token-detail__summary-tabs">
+                {getGeneralSummary() && (
+                  <button
+                    type="button"
+                    className={
+                      'token-detail__summary-tab' +
+                      (summaryTab === 'summary' ? ' token-detail__summary-tab--active' : '')
+                    }
+                    onClick={() => setSummaryTab('summary')}
+                  >
+                    Summary
+                  </button>
+                )}
+                {getGeneralFinancialInsight() && (
+                  <button
+                    type="button"
+                    className={
+                      'token-detail__summary-tab' +
+                      (summaryTab === 'financial' ? ' token-detail__summary-tab--active' : '')
+                    }
+                    onClick={() => setSummaryTab('financial')}
+                  >
+                    Financial
+                  </button>
+                )}
+              </div>
             </div>
             <div className="token-detail__financial-insight-content">
-              <p>{getGeneralFinancialInsight()}</p>
+              {summaryTab === 'summary' && getGeneralSummary() && (
+                <p>{getGeneralSummary()}</p>
+              )}
+              {summaryTab === 'financial' && getGeneralFinancialInsight() && (
+                <p>{getGeneralFinancialInsight()}</p>
+              )}
+              {/* Fallbacks in case one of them is missing */}
+              {summaryTab === 'summary' &&
+                !getGeneralSummary() &&
+                getGeneralFinancialInsight() && <p>{getGeneralFinancialInsight()}</p>}
+              {summaryTab === 'financial' &&
+                !getGeneralFinancialInsight() &&
+                getGeneralSummary() && <p>{getGeneralSummary()}</p>}
             </div>
           </div>
         )}
@@ -538,7 +653,10 @@ export const TokenDetail: React.FC = () => {
           {/* Top 100 Holders */}
           <div className={`token-detail__card token-detail__card--fixed ${!isAnalyzed ? 'token-detail__card--blur' : ''}`}>
             <div className="token-detail__card-header">
-              <h3>Top 100 Holders</h3>
+              <h3 className="token-detail__card-title">
+                <span className="token-detail__card-icon"><HoldersIcon /></span>
+                <span>Top 100 Holders</span>
+              </h3>
             </div>
             <div className="token-detail__card-body">
               <div className="token-detail__card-scrollable">
@@ -603,7 +721,10 @@ export const TokenDetail: React.FC = () => {
           {/* Exchanges / Inflow & Outflow Slider */}
           <div className={`token-detail__card token-detail__card--fixed ${!isAnalyzed ? 'token-detail__card--blur' : ''}`}>
             <div className="token-detail__card-header">
-              <h3>{exchangeSlide === 'exchanges' ? 'Exchanges' : 'Inflow & Outflow'}</h3>
+              <h3 className="token-detail__card-title">
+                <span className="token-detail__card-icon"><ExchangesIcon /></span>
+                <span>{exchangeSlide === 'exchanges' ? 'Exchanges' : 'Inflow & Outflow'}</span>
+              </h3>
               <div className="token-detail__card-nav">
                 <button 
                   className={`token-detail__nav-btn ${exchangeSlide === 'exchanges' ? 'active' : ''}`}
@@ -723,7 +844,10 @@ export const TokenDetail: React.FC = () => {
           <div className={`token-detail__card token-detail__card--report ${!isAnalyzed ? 'token-detail__card--blur' : ''}`}>
             <div className="token-detail__card-header">
               <div>
-                <h3>Detailed Report</h3>
+                <h3 className="token-detail__card-title">
+                  <span className="token-detail__card-icon"><ReportIcon /></span>
+                  <span>Detailed Report</span>
+                </h3>
                 <p className="token-detail__report-subtitle">Deep-dive technical & fundamental audit</p>
               </div>
               <Button 
@@ -796,7 +920,10 @@ export const TokenDetail: React.FC = () => {
           {/* Institutional Holdings - Separate Card */}
           <div className={`token-detail__card token-detail__card--fixed ${!isAnalyzed ? 'token-detail__card--blur' : ''}`}>
             <div className="token-detail__card-header">
-              <h3>Institutional Holdings</h3>
+              <h3 className="token-detail__card-title">
+                <span className="token-detail__card-icon"><TreasuryIcon /></span>
+                <span>Institutional Holdings</span>
+              </h3>
             </div>
             <div className="token-detail__card-body">
               <div className="token-detail__card-scrollable">
@@ -840,21 +967,21 @@ export const TokenDetail: React.FC = () => {
                   )}
                 </div>
               </div>
-              {isAnalyzed && getAIInsight('InstitutionalHoldingsModule') && (
+              {isAnalyzed && getAIInsight('TreasuryHoldingsModule') && (
                 <div className="token-detail__ai-preview">
                   <div className="token-detail__ai-preview-pill" />
                   <div className="token-detail__ai-preview-content">
                     <span className="token-detail__ai-preview-label">AI INSIGHT</span>
                     <p className="token-detail__ai-preview-text">
-                      {getAIInsight('InstitutionalHoldingsModule')}
+                      {getAIInsight('TreasuryHoldingsModule')}
                     </p>
                     <button
                       type="button"
                       className="token-detail__ai-preview-more"
                       onClick={() =>
                         setActiveInsight({
-                          title: 'Institutional Holdings – AI Insight',
-                          text: getAIInsight('InstitutionalHoldingsModule') || '',
+                          title: 'Treasury Holdings – AI Insight',
+                          text: getAIInsight('TreasuryHoldingsModule') || '',
                         })
                       }
                     />
@@ -867,7 +994,10 @@ export const TokenDetail: React.FC = () => {
           {/* Social & Developer Data */}
           <div className={`token-detail__card token-detail__card--fixed ${!isAnalyzed ? 'token-detail__card--blur' : ''}`}>
             <div className="token-detail__card-header">
-              <h3>Social & Developer Data</h3>
+              <h3 className="token-detail__card-title">
+                <span className="token-detail__card-icon"><SocialIcon /></span>
+                <span>Social & Developer Data</span>
+              </h3>
             </div>
             <div className="token-detail__card-body">
               <div className="token-detail__card-scrollable">
@@ -996,6 +1126,15 @@ export const TokenDetail: React.FC = () => {
                 </Button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Analysis meta info - global note about analysis timestamp (footer) */}
+        {isAnalyzed && analysis?.createdAt && (
+          <div className="token-detail__analysis-meta token-detail__analysis-meta--footer">
+            <span className="token-detail__analysis-meta-text">
+              This analysis was generated on {formatAnalysisDate(analysis.createdAt)} and reflects the data available at that time.
+            </span>
           </div>
         )}
 

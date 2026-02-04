@@ -264,6 +264,47 @@ export interface Analysis {
   };
 }
 
+// Lightweight analysis item for listing/history
+export interface AnalysisListItem {
+  id: string;
+  status: AnalysisStatus;
+  createdAt: string;
+  riskLevel: string | null;
+  project: {
+    id: string;
+    coingeckoId: string;
+    slug: string | null;
+    name: string;
+    symbol: string;
+    imageUrl: string | null;
+    contractAddress: string | null;
+    websiteUrl: string | null;
+    whitepaperUrl: string | null;
+    dataSource: 'COINGECKO' | 'MANUAL';
+    createdAt: string;
+  };
+  user: {
+    id: string;
+    fullName: string | null;
+    email: string;
+  };
+}
+
+export interface ListAnalysesResponse {
+  data: AnalysisListItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface ListAnalysesParams {
+  page?: number;
+  limit?: number;
+}
+
 /**
  * Create Analysis Payload
  */

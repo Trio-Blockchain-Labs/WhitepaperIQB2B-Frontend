@@ -184,6 +184,10 @@
 }
 
 .token-detail__financial-insight-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--spacing-lg);
   margin-bottom: var(--spacing-md);
 }
 
@@ -194,6 +198,57 @@
   margin: 0;
 }
 
+.token-detail__card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.token-detail__card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(139, 46, 139, 0.06);
+  border: 1px solid rgba(139, 46, 139, 0.18);
+  color: var(--color-primary);
+}
+
+.token-detail__summary-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-left: auto;
+}
+
+.token-detail__summary-tab {
+  border: 1px solid var(--color-gray-200);
+  background-color: var(--color-gray-50);
+  color: var(--color-text-secondary);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.token-detail__summary-tab--active {
+  background: linear-gradient(135deg, rgba(139, 46, 139, 0.12), rgba(193, 53, 132, 0.18));
+  border-color: rgba(139, 46, 139, 0.5);
+  color: var(--color-primary);
+}
+
+.token-detail__summary-tab:hover {
+  border-color: rgba(139, 46, 139, 0.4);
+}
+
 .token-detail__financial-insight-content {
   color: var(--color-text-secondary);
   line-height: 1.6;
@@ -201,6 +256,26 @@
 
 .token-detail__financial-insight-content p {
   margin: 0;
+}
+
+/* Analysis meta (date + history) */
+.token-detail__analysis-meta {
+  margin: var(--spacing-md) 0 var(--spacing-xl);
+  display: flex;
+  justify-content: center;
+}
+
+.token-detail__analysis-meta--footer {
+  margin-top: var(--spacing-2xl);
+  margin-bottom: 0;
+}
+
+.token-detail__analysis-meta-text {
+  max-width: 520px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  line-height: 1.6;
+  text-align: center;
 }
 
 /* Analysis Prompt */

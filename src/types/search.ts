@@ -25,3 +25,26 @@ export interface SearchResponse {
   projects: SearchResult[];
   categories: SearchCategory[];
 }
+
+// Trending search (coins + pagination)
+export interface TrendingCoin {
+  id: string;
+  name: string;
+  symbol: string;
+  image: string;
+  marketCapRank: number;
+  priceChange24h: number;
+  marketCap: number;
+}
+
+export interface TrendingPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface TrendingResponse {
+  projects: TrendingCoin[];
+  pagination: TrendingPagination;
+}
