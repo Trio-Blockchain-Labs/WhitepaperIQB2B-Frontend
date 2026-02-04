@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Login, Search, SearchResults, TokenDetail, Settings, Projects, Invite, Trending, Analyses } from './pages';
 import { OrganizationProvider, ToastProvider } from './context';
@@ -7,6 +8,117 @@ import { authService } from './services/auth.service';
 function App() {
   // Check authentication synchronously before rendering
   const isAuthenticated = authService.isAuthenticated();
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Auto-refresh token every 5 minutes
+  useEffect(() => {
+    const refreshToken = async () => {
+      // Check if still authenticated before refreshing
+      if (!authService.isAuthenticated()) {
+        if (refreshIntervalRef.current) {
+          clearInterval(refreshIntervalRef.current);
+          refreshIntervalRef.current = null;
+        }
+        return;
+      }
+
+      try {
+        await authService.refreshToken();
+      } catch (error) {
+        console.error('Failed to refresh token:', error);
+        // If refresh fails, clear interval
+        if (refreshIntervalRef.current) {
+          clearInterval(refreshIntervalRef.current);
+          refreshIntervalRef.current = null;
+        }
+      }
+    };
+
+    // Only start if authenticated
+    if (isAuthenticated) {
+      // Refresh immediately
+      refreshToken();
+
+      // Set up interval to refresh every 5 minutes (300000 ms)
+      refreshIntervalRef.current = setInterval(refreshToken, 5 * 60 * 1000);
+    } else {
+      // Clear interval if user is not authenticated
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+    }
+
+    // Cleanup on unmount or when authentication changes
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+    };
+  }, [isAuthenticated]);
+
+  // Listen for login/logout events to start/stop refresh interval
+  useEffect(() => {
+    const handleLogin = () => {
+      // User logged in, start refresh interval
+      const refreshToken = async () => {
+        if (!authService.isAuthenticated()) {
+          if (refreshIntervalRef.current) {
+            clearInterval(refreshIntervalRef.current);
+            refreshIntervalRef.current = null;
+          }
+          return;
+        }
+
+        try {
+          await authService.refreshToken();
+        } catch (error) {
+          console.error('Failed to refresh token:', error);
+          if (refreshIntervalRef.current) {
+            clearInterval(refreshIntervalRef.current);
+            refreshIntervalRef.current = null;
+          }
+        }
+      };
+
+      // Clear existing interval
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+      }
+
+      // Refresh immediately and start interval
+      refreshToken();
+      refreshIntervalRef.current = setInterval(refreshToken, 5 * 60 * 1000);
+    };
+
+    const handleLogout = () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+    };
+
+    // Listen for login event
+    window.addEventListener('user-logged-in', handleLogin);
+
+    // Listen for storage changes (token removal = logout)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'token' && !e.newValue) {
+        handleLogout();
+      } else if (e.key === 'token' && e.newValue) {
+        // Token was added (login from another tab)
+        handleLogin();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('user-logged-in', handleLogin);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   return (
     <Router>
