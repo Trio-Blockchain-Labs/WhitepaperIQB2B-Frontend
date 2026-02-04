@@ -72,6 +72,12 @@ interface ProjectFilters {
 export const Projects: React.FC = () => {
   const navigate = useNavigate();
   const { showError } = useToast();
+
+  // Set page title
+  useEffect(() => {
+    document.title = 'Analyzed Projects - WhitepaperIQ';
+  }, []);
+
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [pagination, setPagination] = useState({

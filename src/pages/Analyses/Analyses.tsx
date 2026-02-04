@@ -16,6 +16,12 @@ const normalizeRiskLevel = (risk?: string | null): 'low' | 'medium' | 'high' | '
 
 export const Analyses: React.FC = () => {
   const navigate = useNavigate();
+
+  // Set page title
+  useEffect(() => {
+    document.title = 'All Analyses - WhitepaperIQ';
+  }, []);
+
   const [response, setResponse] = useState<ListAnalysesResponse | null>(null);
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);

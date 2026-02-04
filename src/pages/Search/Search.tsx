@@ -42,6 +42,11 @@ const normalizeRiskLevel = (risk?: string | null): 'low' | 'medium' | 'high' | '
 
 export const Search: React.FC = () => {
   const navigate = useNavigate();
+
+  // Set page title
+  useEffect(() => {
+    document.title = 'Search - WhitepaperIQ';
+  }, []);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);

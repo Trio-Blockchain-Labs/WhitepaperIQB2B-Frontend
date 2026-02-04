@@ -182,6 +182,15 @@ export const TokenDetail: React.FC = () => {
   const [history, setHistory] = useState<AnalysisHistoryItem[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
+  // Set page title based on project name
+  useEffect(() => {
+    if (project) {
+      document.title = `${project.name} (${project.symbol || 'N/A'}) - WhitepaperIQ`;
+    } else {
+      document.title = 'Token Analysis - WhitepaperIQ';
+    }
+  }, [project]);
+
   useEffect(() => {
     // Reset analysis state when coingeckoId changes
     // This ensures every token page starts with blurred analysis sections

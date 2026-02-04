@@ -7,6 +7,12 @@ import './Trending.css';
 
 export const Trending: React.FC = () => {
   const navigate = useNavigate();
+
+  // Set page title
+  useEffect(() => {
+    document.title = 'Trending Tokens - WhitepaperIQ';
+  }, []);
+
   const [coins, setCoins] = useState<TrendingCoin[]>([]);
   const [pagination, setPagination] = useState<TrendingPagination | null>(null);
   const [page, setPage] = useState(1);

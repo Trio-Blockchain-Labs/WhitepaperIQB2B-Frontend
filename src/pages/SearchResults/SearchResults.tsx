@@ -31,6 +31,11 @@ export const SearchResults: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Set page title
+  useEffect(() => {
+    document.title = query ? `Search: ${query} - WhitepaperIQ` : 'Search Results - WhitepaperIQ';
+  }, [query]);
+
   useEffect(() => {
     if (!query.trim()) {
       setResults([]);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthLayout } from '../../layouts';
 import { Button, Input } from '../../components/common';
@@ -32,6 +32,18 @@ export const Login: React.FC = () => {
   const [rememberMe, setRememberMe] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [isLoading, setIsLoading] = useState(false);
+
+  // Redirect to search if already authenticated
+  useEffect(() => {
+    if (authService.isAuthenticated()) {
+      navigate('/search', { replace: true });
+    }
+  }, [navigate]);
+
+  // Set page title
+  useEffect(() => {
+    document.title = 'Login - WhitepaperIQ';
+  }, []);
 
   const validateForm = (): boolean => {
     const newErrors: { email?: string; password?: string } = {};

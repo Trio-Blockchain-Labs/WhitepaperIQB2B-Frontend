@@ -48,6 +48,11 @@ const BuildingIcon = () => (
 export const Invite: React.FC = () => {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
+
+  // Set page title
+  useEffect(() => {
+    document.title = 'Accept Invitation - WhitepaperIQ';
+  }, []);
   
   const [isValidating, setIsValidating] = useState(true);
   const [invite, setInvite] = useState<InvitationDetails | null>(null);

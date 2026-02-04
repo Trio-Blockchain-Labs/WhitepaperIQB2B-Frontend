@@ -524,6 +524,11 @@ export const Settings: React.FC = () => {
   // Use organization from context for synced state across app
   const { organization: contextOrganization, updateOrganizationName } = useOrganization();
   
+  // Set page title
+  useEffect(() => {
+    document.title = 'Settings - WhitepaperIQ';
+  }, []);
+
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
