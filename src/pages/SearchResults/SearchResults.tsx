@@ -20,17 +20,6 @@ const ArrowRightIcon = () => (
   </svg>
 );
 
-// Map category names to icon types
-const categoryToIconType: Record<string, string> = {
-  'Layer 1': 'layer1',
-  'Layer 2': 'layer2',
-  'Layer 0': 'layer1',
-  'DeFi': 'defi',
-  'Oracle': 'oracle',
-  'Meme': 'meme',
-  'Payment': 'payment',
-};
-
 export const SearchResults: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -56,8 +45,8 @@ export const SearchResults: React.FC = () => {
       
       try {
         const searchResponse = await searchService.search(query.trim()); // No limit - get all results
-        setResults(searchResponse.coins || []);
-        setTotalCount(searchResponse.coins?.length || 0);
+        setResults(searchResponse.projects || []);
+        setTotalCount(searchResponse.projects?.length || 0);
       } catch (err) {
         console.error('Search failed:', err);
         setError(getErrorMessage(err));
@@ -135,22 +124,22 @@ export const SearchResults: React.FC = () => {
                   className="search-results__item"
                   onClick={() => handleTokenClick(result)}
                 >
-                  {result.thumb && (
+                  {result.image && (
                     <div className="search-results__item-icon">
                       <img 
-                        src={result.thumb.replace('/thumb/', '/small/')} 
+                        src={result.image.includes('/thumb/') ? result.image.replace('/thumb/', '/small/') : result.image} 
                         alt={result.name}
                         onError={(e) => {
-                          // Fallback to original thumb if small fails
+                          // Fallback to original image if small fails
                           const target = e.target as HTMLImageElement;
-                          if (target.src !== result.thumb) {
-                            target.src = result.thumb;
+                          if (result.image && target.src !== result.image) {
+                            target.src = result.image;
                           }
                         }}
                       />
                     </div>
                   )}
-                  {!result.thumb && (
+                  {!result.image && (
                     <div className="search-results__item-icon">
                       {getCategoryIcon('layer1', 24)}
                     </div>
