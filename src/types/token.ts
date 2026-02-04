@@ -58,6 +58,7 @@ export interface CriteriaAssessment {
 }
 
 // AIInsight moved to analysis.ts
+import type { AIInsight } from './analysis';
 
 export interface TokenAnalysis {
   id: string;

@@ -1,5 +1,9 @@
 // Project Types - Based on API Documentation
 
+// Import and re-export AnalysisStatus from analysis.ts to avoid duplicate exports
+import type { AnalysisStatus } from './analysis';
+export type { AnalysisStatus };
+
 // Analyzed Project Types (for Projects page)
 export type RiskLevel = 'low' | 'medium' | 'high';
 
@@ -80,7 +84,6 @@ export interface CreateProjectPayload {
 }
 
 // List Projects API Types
-export type AnalysisStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 
 export interface ProjectListItem {
   id: string;
