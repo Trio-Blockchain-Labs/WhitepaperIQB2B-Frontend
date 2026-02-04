@@ -4,42 +4,22 @@
   gap: var(--spacing-md);
 }
 
-.logo__whitepaper {
+.logo__image {
+  display: block;
   height: auto;
   width: auto;
-  display: block;
-}
-
-.logo__icon {
-  height: 32px;
-  width: auto;
-  display: block;
+  max-width: 100%;
 }
 
 /* Size variants */
-.logo--sm .logo__whitepaper {
-  height: 16px;
-  width: auto;
-}
-
-.logo--sm .logo__icon {
-  height: 20px;
-}
-
-.logo--md .logo__whitepaper {
+.logo--sm .logo__image {
   height: 24px;
-  width: auto;
 }
 
-.logo--md .logo__icon {
+.logo--md .logo__image {
   height: 32px;
 }
 
-.logo--lg .logo__whitepaper {
-  height: 56px;
-  width: auto;
-}
-
-.logo--lg .logo__icon {
-  height: 72px;
+.logo--lg .logo__image {
+  height: 64px;
 }

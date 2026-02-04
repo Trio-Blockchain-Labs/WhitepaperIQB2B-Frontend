@@ -158,9 +158,6 @@ export const Analyses: React.FC = () => {
                           </span>
                         )}
                       </span>
-                      <span className="analyses__item-project-meta">
-                        {new Date(analysis.project.createdAt).toLocaleDateString()}
-                      </span>
                     </div>
                   </div>
                   <div className="analyses__item-user">

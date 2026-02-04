@@ -212,8 +212,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   border-radius: 999px;
   background: rgba(139, 46, 139, 0.06);
   border: 1px solid rgba(139, 46, 139, 0.18);

@@ -1,5 +1,4 @@
 import React from 'react';
-import logoWhitepaper from '../../assets/logo-whitepaper.png';
 import logo from '../../assets/logo.png';
 import './Logo.css';
 
@@ -11,8 +10,7 @@ interface LogoProps {
 export const Logo: React.FC<LogoProps> = ({ className = '', size = 'md' }) => {
   return (
     <div className={`logo logo--${size} ${className}`}>
-      <img src={logoWhitepaper} alt="WhitepaperIQ" className="logo__whitepaper" />
-      <img src={logo} alt="WhitepaperIQ" className="logo__icon" />
+      <img src={logo} alt="WhitepaperIQ" className="logo__image" />
     </div>
   );
 };
