@@ -24,7 +24,7 @@ export const searchService = {
         // Map thumb to imageUrl for backward compatibility in UI
         const mappedData: SearchResponse = {
           ...response.data.data,
-          coins: response.data.data.coins || [],
+          projects: response.data.data.projects || [],
           categories: response.data.data.categories || [],
         };
         return mappedData;

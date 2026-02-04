@@ -8,7 +8,7 @@ export interface SearchResult {
   name: string;
   symbol: string;
   market_cap_rank: number | null;
-  thumb: string | null; // Image URL
+  image: string | null; // Image URL
 }
 
 /**
@@ -22,6 +22,6 @@ export interface SearchCategory {
  * Search API response (actual structure)
  */
 export interface SearchResponse {
-  coins: SearchResult[];
+  projects: SearchResult[];
   categories: SearchCategory[];
 }

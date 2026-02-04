@@ -12,7 +12,7 @@ import type {
   CompanyHolding,
   Criteria
 } from '../../types/analysis';
-import type { Project, PriceData, ProjectWithLatestAnalysis } from '../../types/project';
+import type { Project, PriceData, ProjectWithLatestAnalysis, AnalysisHistoryItem } from '../../types/project';
 import './TokenDetail.css';
 
 // Local Analysis Status (for UI state)
@@ -72,6 +72,13 @@ const BuildingIcon = () => (
   </svg>
 );
 
+const HistoryIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="12 6 12 12 16 14" />
+  </svg>
+);
+
 
 // Format helpers
 const formatNumber = (num: number): string => {
@@ -113,6 +120,11 @@ export const TokenDetail: React.FC = () => {
     title: string;
     text: string;
   } | null>(null);
+
+  // History modal state
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [history, setHistory] = useState<AnalysisHistoryItem[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   useEffect(() => {
     // Reset analysis state when coingeckoId changes
@@ -350,6 +362,56 @@ export const TokenDetail: React.FC = () => {
     return getAIInsight('GeneralFinancialModule');
   };
 
+  // History functions
+  const handleOpenHistory = async () => {
+    if (!project?.id) return;
+    
+    setIsHistoryModalOpen(true);
+    setIsLoadingHistory(true);
+    
+    try {
+      const historyResponse = await projectService.getProjectHistory(project.id);
+      setHistory(historyResponse.data);
+    } catch (error) {
+      showError(getErrorMessage(error));
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const handleSelectHistoryAnalysis = async (analysisId: string) => {
+    setIsHistoryModalOpen(false);
+    setIsLoading(true);
+    setAnalysisStatus('loading');
+    
+    try {
+      const selectedAnalysis = await analysisService.getAnalysis(analysisId);
+      setAnalysis(selectedAnalysis);
+      setAnalysisStatus('completed');
+      
+      // Update price data from analysis
+      if (selectedAnalysis.resultData?.coinData?.marketData) {
+        const market = selectedAnalysis.resultData.coinData.marketData;
+        setPriceData({
+          currentPrice: market.currentPrice,
+          priceChange24h: market.priceChange24h,
+          totalVolume: market.totalVolume,
+          marketCap: market.marketCap,
+          fullyDilutedValuation: market.fullyDilutedValuation,
+          totalSupply: market.totalSupply,
+          maxSupply: market.maxSupply || 0,
+        });
+      }
+      
+      showSuccess('Analysis loaded successfully');
+    } catch (error) {
+      showError(getErrorMessage(error));
+      setAnalysisStatus('error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <MainLayout>
       <div className="token-detail">
@@ -449,16 +511,17 @@ export const TokenDetail: React.FC = () => {
                 >
                   {isAnalyzing ? 'Analyzing...' : 'Start Analysis'}
                 </Button>
-                {/* TODO: Show "View Previous Analysis" button when previous analysis API is ready */}
-                {/* <Button 
-                  variant="outline" 
-                  size="lg" 
-                  onClick={handleViewPreviousAnalysis}
-                  leftIcon={<HistoryIcon />}
-                  disabled={isAnalyzing}
-                >
-                  View Previous Analysis
-                </Button> */}
+                {project?.id && (
+                  <Button 
+                    variant="outline" 
+                    size="lg" 
+                    onClick={handleOpenHistory}
+                    leftIcon={<HistoryIcon />}
+                    disabled={isAnalyzing}
+                  >
+                    View History
+                  </Button>
+                )}
               </div>
               {/* TODO: Show previous analysis date when available */}
               {/* {previousAnalysisDate && (
@@ -931,6 +994,65 @@ export const TokenDetail: React.FC = () => {
                 <Button size="sm" variant="secondary" onClick={() => setActiveInsight(null)}>
                   Close
                 </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* History Modal */}
+        {isHistoryModalOpen && (
+          <div
+            className="token-detail__history-modal-backdrop"
+            onClick={() => setIsHistoryModalOpen(false)}
+          >
+            <div
+              className="token-detail__history-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="token-detail__history-modal-header">
+                <h3>Analysis History</h3>
+                <button
+                  className="token-detail__history-modal-close"
+                  onClick={() => setIsHistoryModalOpen(false)}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="token-detail__history-modal-content">
+                {isLoadingHistory ? (
+                  <div className="token-detail__history-loading">Loading history...</div>
+                ) : history.length === 0 ? (
+                  <div className="token-detail__history-empty">No analysis history found.</div>
+                ) : (
+                  <div className="token-detail__history-list">
+                    {history.map((item) => (
+                      <div
+                        key={item.id}
+                        className="token-detail__history-item"
+                        onClick={() => handleSelectHistoryAnalysis(item.id)}
+                      >
+                        <div className="token-detail__history-item-main">
+                          <div className="token-detail__history-item-date">
+                            {new Date(item.createdAt).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </div>
+                          <div className="token-detail__history-item-user">
+                            {item.user.fullName || item.user.email}
+                          </div>
+                        </div>
+                        <div className={`token-detail__history-item-status token-detail__history-item-status--${item.status.toLowerCase()}`}>
+                          {item.status}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

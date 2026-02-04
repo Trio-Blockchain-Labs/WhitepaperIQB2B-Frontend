@@ -126,3 +126,30 @@ export interface ProjectAnalysisUser {
 export interface ProjectWithLatestAnalysis extends Project {
   latestAnalysis?: (import('./analysis').Analysis & { user?: ProjectAnalysisUser }) | null;
 }
+
+// Project History API Types
+export interface AnalysisHistoryItem {
+  id: string;
+  status: AnalysisStatus;
+  createdAt: string;
+  user: {
+    id: string;
+    fullName: string | null;
+    email: string;
+  };
+}
+
+export interface ProjectHistoryResponse {
+  data: AnalysisHistoryItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface ProjectHistoryParams {
+  page?: number;
+  limit?: number;
+}

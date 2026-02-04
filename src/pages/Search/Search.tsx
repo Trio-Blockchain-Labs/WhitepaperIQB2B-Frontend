@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../layouts';
 import { trendingCoins, categories, recentAnalyses } from '../../mock';
@@ -37,27 +37,14 @@ export const Search: React.FC = () => {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
-  const searchTimeoutRef = useRef<number | null>(null);
 
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const handleSearch = useCallback((searchQuery: string) => {
+  const handleSearch = useCallback(async (searchQuery: string) => {
     setQuery(searchQuery);
     
-    // Clear previous timeout
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-      searchTimeoutRef.current = null;
-    }
-    
-    if (!searchQuery.trim()) {
+    const trimmed = searchQuery.trim();
+
+    // Require at least 2 characters before hitting the search endpoint
+    if (trimmed.length < 2) {
       setResults([]);
       setShowDropdown(false);
       return;
@@ -66,31 +53,21 @@ export const Search: React.FC = () => {
     setIsSearching(true);
     setShowDropdown(true);
     
-    // Debounce search API call - wait 2 seconds after user stops typing
-    searchTimeoutRef.current = window.setTimeout(async () => {
-      try {
-        const searchResponse = await searchService.search(searchQuery.trim(), 7); // Limit to 7 for autocomplete
-        setResults(searchResponse.coins || []);
-      } catch (error) {
-        console.error('Search failed:', error);
-        setResults([]);
-      } finally {
-        setIsSearching(false);
-        searchTimeoutRef.current = null;
-      }
-    }, 2000); // 2 seconds debounce
+    try {
+      const searchResponse = await searchService.search(trimmed, 7); // Limit to 7 for autocomplete
+      setResults(searchResponse.projects || []);
+    } catch (error) {
+      console.error('Search failed:', error);
+      setResults([]);
+    } finally {
+      setIsSearching(false);
+    }
   }, []);
 
   // Handle form submit (Enter key or search button) - immediate navigation
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Clear any pending search timeout
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-      searchTimeoutRef.current = null;
-    }
-    
+
     if (query.trim()) {
       setShowDropdown(false);
       // Navigate immediately to results page (which will make its own API call)
@@ -171,16 +148,16 @@ export const Search: React.FC = () => {
                         className="search__result-item"
                         onClick={() => handleResultClick(result)}
                       >
-                        {result.thumb && (
+                        {result.image && (
                           <div className="search__result-icon">
                             <img 
-                              src={result.thumb.replace('/thumb/', '/small/')} 
+                              src={result.image.replace('/image/', '/small/')} 
                               alt={result.name}
                               onError={(e) => {
-                                // Fallback to original thumb if small fails
+                                // Fallback to original image if small fails
                                 const target = e.target as HTMLImageElement;
-                                if (result.thumb && target.src !== result.thumb) {
-                                  target.src = result.thumb;
+                                if (result.image && target.src !== result.image) {
+                                  target.src = result.image;
                                 }
                               }}
                             />
