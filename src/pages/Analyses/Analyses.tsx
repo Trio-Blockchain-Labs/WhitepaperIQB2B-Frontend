@@ -52,7 +52,9 @@ export const Analyses: React.FC = () => {
   const users = useMemo(() => {
     const map = new Map<string, { id: string; label: string }>();
     analyses.forEach((a) => {
-      const label = a.user.fullName || a.user.email;
+      // Some analyses might not have user info (null from API)
+      if (!a.user) return;
+      const label = a.user.fullName || a.user.email || 'Unknown user';
       map.set(a.user.id, { id: a.user.id, label });
     });
     return Array.from(map.values());
@@ -62,7 +64,7 @@ export const Analyses: React.FC = () => {
     const byUser =
       selectedUserId === 'all'
         ? analyses
-        : analyses.filter((a) => a.user.id === selectedUserId);
+        : analyses.filter((a) => a.user && a.user.id === selectedUserId);
 
     const byStatus = byUser.filter((a) => a.status !== 'FAILED');
 
@@ -168,9 +170,15 @@ export const Analyses: React.FC = () => {
                   </div>
                   <div className="analyses__item-user">
                     <span className="analyses__item-user-name">
-                      {analysis.user.fullName || analysis.user.email}
+                      {analysis.user
+                        ? analysis.user.fullName || analysis.user.email
+                        : 'Unknown user'}
                     </span>
-                    <span className="analyses__item-user-email">{analysis.user.email}</span>
+                    {analysis.user && (
+                      <span className="analyses__item-user-email">
+                        {analysis.user.email}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="analyses__item-side">
