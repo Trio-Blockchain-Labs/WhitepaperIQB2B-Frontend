@@ -110,14 +110,12 @@ export const authService = {
   },
 
   /**
-   * Refresh access token using refresh token from cookie
+   * Refresh access token using refresh token cookie
    * POST /api/v1/auth/refresh
    */
   async refreshToken(): Promise<string | null> {
     try {
-      const response = await api.post<ApiResponse<RefreshTokenResponse>>('/auth/refresh', {}, {
-        withCredentials: true, // Include cookies
-      });
+      const response = await api.post<ApiResponse<RefreshTokenResponse>>('/auth/refresh', {});
       
       if (response.data.success && response.data.data) {
         const { accessToken } = response.data.data;
@@ -126,8 +124,8 @@ export const authService = {
       }
       
       return null;
-    } catch {
-      // Refresh failed - do not force logout; keep current token until it naturally expires
+    } catch (error) {
+      console.error('Failed to refresh token:', error);
       return null;
     }
   },
