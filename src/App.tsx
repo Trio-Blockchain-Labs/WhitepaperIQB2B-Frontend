@@ -10,7 +10,7 @@ function App() {
   const isAuthenticated = authService.isAuthenticated();
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Auto-refresh token every 5 minutes
+  // Auto-refresh token periodically (every 1 minute)
   useEffect(() => {
     const refreshToken = async () => {
       // Check if still authenticated before refreshing
@@ -39,8 +39,8 @@ function App() {
       // Refresh immediately
       refreshToken();
 
-      // Set up interval to refresh every 5 minutes (300000 ms)
-      refreshIntervalRef.current = setInterval(refreshToken, 5 * 60 * 1000);
+      // Set up interval to refresh every 1 minute (60000 ms)
+      refreshIntervalRef.current = setInterval(refreshToken, 60 * 1000);
     } else {
       // Clear interval if user is not authenticated
       if (refreshIntervalRef.current) {
@@ -89,7 +89,7 @@ function App() {
 
       // Refresh immediately and start interval
       refreshToken();
-      refreshIntervalRef.current = setInterval(refreshToken, 5 * 60 * 1000);
+      refreshIntervalRef.current = setInterval(refreshToken, 60 * 1000);
     };
 
     const handleLogout = () => {

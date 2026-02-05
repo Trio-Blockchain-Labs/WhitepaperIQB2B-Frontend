@@ -127,8 +127,7 @@ export const authService = {
       
       return null;
     } catch {
-      // Refresh failed - clear auth data
-      this.clearAuth();
+      // Refresh failed - do not force logout; keep current token until it naturally expires
       return null;
     }
   },
