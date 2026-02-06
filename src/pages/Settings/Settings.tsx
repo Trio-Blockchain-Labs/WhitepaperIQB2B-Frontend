@@ -56,16 +56,10 @@ const PlusIcon = () => (
   </svg>
 );
 
-const CopyIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-  </svg>
-);
-
-const CheckIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <polyline points="20 6 9 17 4 12" />
+const MailIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <rect x="3" y="5" width="18" height="14" rx="2" ry="2" />
+    <polyline points="3 7 12 13 21 7" />
   </svg>
 );
 
@@ -151,7 +145,11 @@ const MemberModal: React.FC<MemberModalProps> = ({
   };
 
   // Can't modify OWNER, SYSTEM_ADMIN or self
-  const canModify = member.role !== 'OWNER' && member.role !== 'SYSTEM_ADMIN' && (currentUserRole === 'OWNER' || currentUserRole === 'ADMIN' || currentUserRole === 'SYSTEM_ADMIN');
+  const canModify =
+    member.role !== 'OWNER' &&
+    member.role !== 'SYSTEM_ADMIN' &&
+    !isCurrentUser &&
+    (currentUserRole === 'OWNER' || currentUserRole === 'ADMIN' || currentUserRole === 'SYSTEM_ADMIN');
   const roles: UserRole[] = ['ADMIN', 'ANALYST', 'VIEWER'];
 
   return (
@@ -352,16 +350,26 @@ const MemberModal: React.FC<MemberModalProps> = ({
 interface AddMemberModalProps {
   onClose: () => void;
   onAdd: (email: string, role: UserRole) => Promise<string | null>;
+  initialEmail?: string;
+  initialRole?: UserRole;
+  startInSentState?: boolean;
 }
 
-const AddMemberModal: React.FC<AddMemberModalProps> = ({ onClose, onAdd }) => {
-  const [email, setEmail] = useState('');
-  const [selectedRole, setSelectedRole] = useState<UserRole>('VIEWER');
+const AddMemberModal: React.FC<AddMemberModalProps> = ({ 
+  onClose, 
+  onAdd,
+  initialEmail,
+  initialRole = 'VIEWER',
+  startInSentState = false,
+}) => {
+  const [email, setEmail] = useState(initialEmail || '');
+  const [selectedRole, setSelectedRole] = useState<UserRole>(initialRole);
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [error, setError] = useState('');
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [isInviteSent, setIsInviteSent] = useState(startInSentState);
+  const [isResending, setIsResending] = useState(false);
+  const [resendSecondsLeft, setResendSecondsLeft] = useState(0);
 
   const roles: UserRole[] = ['ADMIN', 'ANALYST', 'VIEWER'];
 
@@ -379,54 +387,78 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({ onClose, onAdd }) => {
     setError('');
     
     try {
-      const link = await onAdd(email, selectedRole);
-      if (link) {
-        setInviteLink(link);
-      }
+      await onAdd(email, selectedRole);
+      setIsInviteSent(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create invitation');
     } finally {
       setIsAdding(false);
     }
   };
-
-  const handleCopyLink = async () => {
-    if (inviteLink) {
-      await navigator.clipboard.writeText(inviteLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  
+  const handleResend = async () => {
+    if (isResending || resendSecondsLeft > 0) return;
+    
+    setIsResending(true);
+    try {
+      await onAdd(email, selectedRole);
+      setResendSecondsLeft(20);
+    } catch (err) {
+      // Hata durumunda ek bir mesaj göstermiyoruz, pattern ile uyumlu kalsın
+      console.error('Failed to resend invitation:', err);
+    } finally {
+      setIsResending(false);
     }
   };
 
-  // Show invite link after creation
-  if (inviteLink) {
+  React.useEffect(() => {
+    if (resendSecondsLeft <= 0) return;
+
+    const timer = setTimeout(() => {
+      setResendSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [resendSecondsLeft]);
+  
+  // Show success state after creation
+  if (isInviteSent) {
     return (
       <div className="settings-modal-overlay" onClick={onClose}>
         <div className="settings-modal settings-modal--add" onClick={e => e.stopPropagation()}>
           <div className="settings-modal__header">
-            <h3 className="settings-modal__title">Invitation Created!</h3>
+            <h3 className="settings-modal__title">
+              <span className="settings-modal__title-icon">
+                <MailIcon />
+              </span>
+              Invitation Sent
+            </h3>
             <button className="settings-modal__close-btn" onClick={onClose}>
               <CloseIcon />
             </button>
           </div>
 
           <div className="settings-modal__invite-success">
-            <p>Share this link with your team member:</p>
-            <div className="settings-modal__invite-link">
-              <input type="text" value={inviteLink} readOnly />
-              <button onClick={handleCopyLink} className="settings-modal__copy-btn">
-                {copied ? <CheckIcon /> : <CopyIcon />}
-                {copied ? 'Copied!' : 'Copy'}
-              </button>
-            </div>
-            <p className="settings-modal__invite-note">
-              This link expires in 7 days. The recipient will be asked to set their name and password.
+            <p>
+              An invitation email has been sent to <strong>{email}</strong>. They will be able to join your
+              organization after completing the registration from their inbox.
             </p>
           </div>
 
           <div className="settings-modal__actions">
-            <Button variant="primary" onClick={onClose} fullWidth>
+            <Button variant="outline" onClick={onClose}>
               Done
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleResend}
+              disabled={isResending || resendSecondsLeft > 0}
+            >
+              {isResending
+                ? 'Resending...'
+                : resendSecondsLeft > 0
+                ? `Resend in ${resendSecondsLeft}s`
+                : 'Resend Invite'}
             </Button>
           </div>
         </div>
@@ -511,7 +543,7 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({ onClose, onAdd }) => {
         <div className="settings-modal__actions">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button variant="primary" onClick={handleAdd} isLoading={isAdding}>
-            {isAdding ? 'Creating...' : 'Create Invite Link'}
+            {isAdding ? 'Inviting...' : 'Invite'}
           </Button>
         </div>
       </div>
@@ -535,6 +567,7 @@ export const Settings: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedMember, setSelectedMember] = useState<OrganizationMember | null>(null);
   const [showAddMember, setShowAddMember] = useState(false);
+  const [selectedInvitation, setSelectedInvitation] = useState<PendingInvitation | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [isSavingName, setIsSavingName] = useState(false);
@@ -609,6 +642,11 @@ export const Settings: React.FC = () => {
   };
 
   const handleMemberDelete = async (memberId: string) => {
+    // Prevent deleting self from the organization
+    if (memberId === currentUserId) {
+      console.warn('Current user cannot delete themselves from the organization');
+      return;
+    }
     setDeletingMemberId(memberId);
     try {
       await organizationService.removeMember(memberId);
@@ -644,8 +682,8 @@ export const Settings: React.FC = () => {
       const invitation = await organizationService.inviteMember({ email, role });
       // Add to pending invitations
       setPendingInvitations(prev => [...prev, invitation]);
-      // Return the invite link
-      return organizationService.getInviteLink(invitation.token);
+      // Backend will handle sending the invitation email, no need to expose the link
+      return null;
     } catch (err) {
       throw err;
     }
@@ -729,7 +767,11 @@ export const Settings: React.FC = () => {
                     <span>Pending Invitations</span>
                   </div>
                   {pendingInvitations.map(invitation => (
-                    <div key={invitation.id} className="settings__member settings__member--pending">
+                    <div
+                      key={invitation.id}
+                      className="settings__member settings__member--pending"
+                      onClick={() => setSelectedInvitation(invitation)}
+                    >
                       <div className="settings__member-info">
                         <span className="settings__member-name settings__member-name--pending">
                           <ClockIcon />
@@ -875,6 +917,17 @@ export const Settings: React.FC = () => {
         <AddMemberModal
           onClose={() => setShowAddMember(false)}
           onAdd={handleAddMember}
+        />
+      )}
+
+      {/* Pending Invitation Modal (reopen sent popup) */}
+      {selectedInvitation && (
+        <AddMemberModal
+          onClose={() => setSelectedInvitation(null)}
+          onAdd={handleAddMember}
+          initialEmail={selectedInvitation.email}
+          initialRole={selectedInvitation.role}
+          startInSentState
         />
       )}
     </MainLayout>

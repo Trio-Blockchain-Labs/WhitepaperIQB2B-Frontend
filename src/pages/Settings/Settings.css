@@ -66,6 +66,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  cursor: pointer;
 }
 
 .settings__member--pending:hover {
@@ -554,9 +555,18 @@
 }
 
 .settings-modal__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
+}
+
+.settings-modal__title-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .settings-modal__delete-btn {
