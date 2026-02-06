@@ -349,7 +349,7 @@ const MemberModal: React.FC<MemberModalProps> = ({
 // Add Member Modal Component
 interface AddMemberModalProps {
   onClose: () => void;
-  onAdd: (email: string, role: UserRole) => Promise<string | null>;
+  onAdd: (email: string, role: UserRole) => Promise<void>;
   initialEmail?: string;
   initialRole?: UserRole;
   startInSentState?: boolean;
@@ -677,13 +677,13 @@ export const Settings: React.FC = () => {
     }
   };
 
-  const handleAddMember = async (email: string, role: UserRole): Promise<string | null> => {
+  const handleAddMember = async (email: string, role: UserRole): Promise<void> => {
     try {
-      const invitation = await organizationService.inviteMember({ email, role });
-      // Add to pending invitations
-      setPendingInvitations(prev => [...prev, invitation]);
-      // Backend will handle sending the invitation email, no need to expose the link
-      return null;
+      await organizationService.inviteMember({ email, role });
+      // Backend returns only success/message; refresh members + pending invitations
+      const membersData = await organizationService.getMembers();
+      setMembers(membersData.users);
+      setPendingInvitations(membersData.pendingInvitations);
     } catch (err) {
       throw err;
     }

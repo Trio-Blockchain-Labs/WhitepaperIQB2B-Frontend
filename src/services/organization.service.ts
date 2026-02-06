@@ -4,7 +4,6 @@ import type {
   Organization,
   OrganizationMembersResponse,
   OrganizationMember,
-  CreatedInvitation,
   UpdateOrganizationPayload,
   InviteMemberPayload,
   UpdateMemberPayload,
@@ -72,16 +71,20 @@ export const organizationService = {
   /**
    * Invite user to organization
    * POST /api/v1/organization/members
+   *
+   * Backend response example:
+   * {
+   *   success: true,
+   *   message: "Invitation created and sent successfully"
+   * }
    */
-  async inviteMember(payload: InviteMemberPayload): Promise<CreatedInvitation> {
+  async inviteMember(payload: InviteMemberPayload): Promise<void> {
     try {
-      const response = await api.post<ApiResponse<CreatedInvitation>>('/organization/members', payload);
+      const response = await api.post<ApiResponse<unknown>>('/organization/members', payload);
       
-      if (response.data.success && response.data.data) {
-        return response.data.data;
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Failed to create invitation');
       }
-      
-      throw new Error('Failed to create invitation');
     } catch (error) {
       throw new Error(getErrorMessage(error));
     }
